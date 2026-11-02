@@ -1,0 +1,72 @@
+{
+  "source_file": "02_utility_fakepower.pdf",
+  "source_sha256": "f46f07f56f98b173cc574ca5bd5297cb773d7e9b11db6cb389870cdd5f1e9dee",
+  "status": "VERIFIED",
+  "doc_type": "utility_bill",
+  "vendor_name": "Fake Power & Gas Utility Co.",
+  "invoice_no": "UTIL-2026-987654",
+  "invoice_no_prov": null,
+  "invoice_date": "2026-08-15",
+  "invoice_date_prov": null,
+  "due_date": "2026-09-05",
+  "due_date_prov": null,
+  "currency": "USD",
+  "category": "Điện nước",
+  "line_items": [],
+  "charges": [
+    {
+      "description": "Previous Account Balance",
+      "amount": "150.00",
+      "amount_prov": null
+    },
+    {
+      "description": "Payment Received - Thank You",
+      "amount": "-150.00",
+      "amount_prov": null
+    },
+    {
+      "description": "Electric Facility Base Charge",
+      "amount": "25.00",
+      "amount_prov": null
+    },
+    {
+      "description": "Electric Energy Usage (1450 kWh)",
+      "amount": "145.00",
+      "amount_prov": null
+    },
+    {
+      "description": "Natural Gas Customer Basic Charge",
+      "amount": "18.50",
+      "amount_prov": null
+    },
+    {
+      "description": "Natural Gas Commodity Usage (65 Therms)",
+      "amount": "58.50",
+      "amount_prov": null
+    },
+    {
+      "description": "City Franchise Fee & Environmental Surcharge",
+      "amount": "8.00",
+      "amount_prov": null
+    }
+  ],
+  "subtotal": null,
+  "subtotal_prov": null,
+  "tax": null,
+  "tax_prov": null,
+  "discount": null,
+  "discount_prov": null,
+  "shipping": null,
+  "shipping_prov": null,
+  "tip": null,
+  "tip_prov": null,
+  "fees": [],
+  "grand_total": "255.00",
+  "grand_total_prov": null,
+  "amount_due": "255.00",
+  "amount_due_prov": null,
+  "review_reasons": [],
+  "schema_version": "1.0",
+  "is_duplicate": false,
+  "duplicate_of": null
+}
