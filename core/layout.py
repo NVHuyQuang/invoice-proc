@@ -38,8 +38,8 @@ def _estimate_skew_slope(words: List[Word], median_height: float) -> float:
                 continue
             dx = x2 - x1
             dy = y2 - y1
-            # Must be to the right by at least a small horizontal distance
-            if dx > max(1.0, 0.2 * median_height):
+            # Must be to the right by at least a small horizontal distance and vertically within median_height
+            if dx > max(1.0, 0.2 * median_height) and abs(dy) <= median_height:
                 slope = dy / dx
                 # Only consider slight residual skew: |slope| <= ~0.2 (~11.3 degrees)
                 if abs(slope) <= 0.20:
@@ -157,7 +157,7 @@ def _reconstruct_page_lines(page_num: int, words: List[Word], page_height: float
             (w['word'].text, w['word'].bbox, w['word'].conf, 0)
             for w in cluster['words']
         ]
-        line_y = float(cluster['mean_yc'])
+        line_y = float(cluster['mean_y_prime'])
         result_lines.append(Line(page=page_num, y=line_y, cells=cells))
 
     return result_lines

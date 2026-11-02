@@ -16,20 +16,50 @@ from typing import Dict, List, Optional, Tuple
 from core.types import Line
 
 
+KNOWN_NUMERIC_UNITS = frozenset({
+    "lb", "lbs", "kg", "g", "oz", "ea", "pcs", "pc", "pk", "ct",
+    "l", "ml", "pt", "qt", "gal", "m", "cm", "mm", "box", "bx", "ton", "yd"
+})
+
+
 def is_numeric_token(text: str) -> bool:
     """Check if text represents a numeric value (quantity, price, amount, code, date).
 
     Strips currency symbols, parentheses, percentages, plus/minus signs.
+    Supports tax flags (33.99T), units (1.25 lb), calculations (2 @ 3.50).
     """
     cleaned = text.strip()
     if not cleaned:
         return False
-    stripped = re.sub(r'[\$€£¥₫%\s\(\)\-\+]', '', cleaned)
+
+    # Check calculation pattern: e.g. "2 @ 3.50", "3 @ $1.50", "2.5 @ 10"
+    calc_pattern = r"^\s*\d+(?:[.,]\d+)?\s*@\s*[\$€£¥₫]?\s*\d+(?:[.,]\d+)?(?:\s*/\s*[a-zA-Z]+)?\s*$"
+    if re.fullmatch(calc_pattern, cleaned, re.IGNORECASE):
+        return True
+
+    # Strip currency symbols, parentheses, percentages, signs, spaces
+    stripped = re.sub(r"[\$€£¥₫%\s\(\)\-\+]", "", cleaned)
     if not stripped:
         return False
-    has_digit = bool(re.search(r'\d', stripped))
-    valid_chars = bool(re.fullmatch(r'[\d.,/:]+', stripped))
-    return has_digit and valid_chars
+
+    # Standard numeric / date / time pattern
+    if re.fullmatch(r"[\d.,/:]+", stripped) and re.search(r"\d", stripped):
+        return True
+
+    # Number with tax flag: e.g. "33.99T", "10.50TX", "5.00 T", "15.00N", "20.00F"
+    sub_stripped = re.sub(r"[\$€£¥₫\(\)\-\+]", "", cleaned).strip()
+    if re.fullmatch(r"^\d[\d,.]*\s*(?:[tTxXnNfFaAbB]|[tT][xX])$", sub_stripped):
+        return True
+
+    # Number with unit: e.g. "1.25 lb", "2.5kg", "10 oz", "500 g", "1.50/lb"
+    unit_match = re.fullmatch(r"^([\d.,]+)\s*(?:/\s*)?([a-zA-Z]+)$", sub_stripped)
+    if unit_match:
+        num_part, unit_part = unit_match.groups()
+        if re.search(r"\d", num_part) and unit_part.lower() in KNOWN_NUMERIC_UNITS:
+            return True
+
+    return False
+
 
 
 @dataclass
@@ -67,7 +97,11 @@ def _segment_line(
     for c in non_empty[1:]:
         prev_c = curr_group[-1]
         gap = c[1][0] - prev_c[1][2]
-        if gap <= gap_threshold:
+        effective_gap = gap_threshold
+        # If adjacent words are non-numeric text tokens, allow larger word spacing
+        if not is_numeric_token(c[0]) and not is_numeric_token(prev_c[0]):
+            effective_gap = max(gap_threshold * 2.5, 25.0)
+        if gap <= effective_gap:
             curr_group.append(c)
         else:
             groups.append(curr_group)
@@ -301,8 +335,8 @@ def assign_columns(lines: List[Line], page_width: float) -> List[Line]:
                         col = bisect.bisect_right(boundaries, s.xc_prime)
                     else:
                         col = 0
-                    if col <= last_col:
-                        col = last_col + 1
+                    if col < last_col:
+                        col = last_col
                     last_col = col
 
                     for c in s.cells:
@@ -386,7 +420,7 @@ def format_lines_as_text(lines: List[Line]) -> str:
             next_x1 = next_c[1][2]
 
             gap = next_x0 - curr_x1
-            is_col_break = (next_col != curr_col) or (gap > gap_threshold)
+            is_col_break = (next_col != curr_col) or (gap > max(gap_threshold * 2.5, 30.0))
 
             if is_col_break:
                 parts.append(curr_text)

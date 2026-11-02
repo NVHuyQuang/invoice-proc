@@ -290,3 +290,45 @@ class TestLayoutRobustness:
         assert len(lines) == 4
         for idx, line in enumerate(lines):
             assert line.cells[0][0] == numbers[idx]
+
+
+class TestWave3LayoutFixes:
+    """Tests for Wave 3 layout fixes: parallel blocks dy limit and mean_y_prime Line.y."""
+
+    def test_parallel_blocks_skew_estimation_dy_limit(self):
+        """Slope estimation must ignore word pairs with abs(dy) > median_height."""
+        from core.layout import _estimate_skew_slope
+
+        # Upright text: Word in left block at x=50, y=100; Word in right block at x=450, y=140
+        # Median height is 15. dx = 400, dy = 40. slope = 40/400 = 0.10 <= 0.20
+        # Without abs(dy) <= median_height check, this produces a false 0.10 skew slope!
+        words = [
+            # Left block: Bill To (y=100, h=15)
+            make_word("Bill To", (50.0, 92.5, 120.0, 107.5)),
+            # Right block: Invoice Info (y=140, h=15)
+            make_word("Invoice Number", (450.0, 132.5, 575.0, 147.5)),
+        ]
+        median_h = 15.0
+        slope = _estimate_skew_slope(words, median_h)
+        # Should be 0.0 because dy=40 > median_h=15
+        assert slope == 0.0
+
+
+    def test_line_y_assigned_from_mean_y_prime(self):
+        """Line.y must be assigned from mean_y_prime (skew-corrected monotonic Y)."""
+        # When words have skew slope, line.y should equal mean_y_prime, not mean_yc
+        # Skew slope: dx = 100, dy = 10 -> slope = 0.1
+        # Word 1: xc=100, yc=100. y_prime = 100 - 0.1 * 100 = 90.0
+        # Word 2: xc=200, yc=110. y_prime = 110 - 0.1 * 200 = 90.0
+        # mean_yc = 105.0, but mean_y_prime = 90.0!
+        words = [
+            make_word("Start", (90.0, 95.0, 110.0, 105.0)),
+            make_word("End", (190.0, 105.0, 210.0, 115.0)),
+        ]
+        lines = reconstruct_lines(words, page_height=1000.0, page_width=800.0)
+        assert len(lines) == 1
+        # line.y must equal mean_y_prime (~90.0), NOT mean_yc (105.0)
+        assert lines[0].y == pytest.approx(90.0, abs=1.0)
+        assert lines[0].y < 100.0  # mean_yc is 105.0, so this will fail if mean_yc was used!
+
+
