@@ -71,6 +71,16 @@ class VaultEntry:
     conf: float
     neg_hint: bool = False  # True if bracketed, trailing minus, CR
 
+    def __repr__(self) -> str:
+        return (
+            f"VaultEntry(token={self.token!r}, raw='[REDACTED]', kind={self.kind!r}, "
+            f"page={self.page!r}, bbox={self.bbox!r}, conf={self.conf!r}, neg_hint={self.neg_hint!r})"
+        )
+
+    def __str__(self) -> str:
+        return self.__repr__()
+
+
 
 class Vault:
     """In-memory secure store for masked numbers, dates, and identifiers.

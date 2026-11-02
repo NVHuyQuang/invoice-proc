@@ -345,3 +345,20 @@ class TestEdgeCasesAndValidation:
             res = parse_number(raw)
             assert isinstance(res, Decimal)
             assert not isinstance(res, float)
+
+    def test_zero_left_with_three_decimals_never_thousands(self):
+        assert parse_number("0.123") == Decimal("0.123")
+        assert parse_number("0.005") == Decimal("0.005")
+        assert parse_number("0.123", document_locale="EU_VN") == Decimal("0.123")
+        assert parse_number("0.005", document_locale="EU_VN") == Decimal("0.005")
+
+    def test_malformed_int_part_syntax(self):
+        with pytest.raises(ValueError):
+            parse_number("1.2,345.67")
+        with pytest.raises(ValueError):
+            parse_number("1,2.345,67")
+
+    def test_trailing_minus_before_tax_flag(self):
+        assert parse_number("33.99-T") == Decimal("-33.99")
+        assert parse_number("33.99 - T") == Decimal("-33.99")
+        assert parse_number("33.99-TX") == Decimal("-33.99")

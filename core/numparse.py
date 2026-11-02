@@ -30,7 +30,7 @@ _DEBIT_PATTERN = re.compile(
     r'(?i)\b(?:DB|DR)\b'
 )
 _TAX_FLAG_PATTERN = re.compile(
-    r'(?i)(?<=\d|\.)\s*(?:TX|TAX|T|F|N|E|X)\s*$'
+    r'(?i)(?<=[\d.−–—-])\s*(?:TX|TAX|T|F|N|E|X)\s*$'
 )
 _DIGIT_SPACE_PATTERN = re.compile(
     r'(?<=\d)\s+(?=\d)'
@@ -122,6 +122,12 @@ def parse_number(
         if any(s.endswith(ch) for ch in "$€£¥₫đ"):
             s = s.rstrip("$€£¥₫đ ").strip()
 
+        # Trailing minus before tax flag: 33.99-T, 33.99 - TX, 33.99−T
+        m_tax_minus = re.search(r'(?i)(?<=\d|\.)\s*([-−–—])\s*(?:TX|TAX|T|F|N|E|X)\s*$', s)
+        if m_tax_minus:
+            is_negative = True
+            s = s[:m_tax_minus.start(1)].strip()
+
         # Trailing tax flags: 33.99T, 33.99 F, 33.99TX
         s = _TAX_FLAG_PATTERN.sub('', s).strip()
 
@@ -163,11 +169,14 @@ def parse_number(
             int_part = s[:last_dot]
             dec_part = s[last_dot + 1:]
             parts = int_part.split(',')
-            if not (1 <= len(parts[0]) <= 3) or any(len(p) != 3 for p in parts[1:]):
+            if not all(p.isdigit() for p in parts) or not (1 <= len(parts[0]) <= 3) or any(len(p) != 3 for p in parts[1:]):
                 raise ValueError("Invalid numeric format")
             if not dec_part.isdigit():
                 raise ValueError("Invalid numeric format")
-            val = Decimal(int_part.replace(',', '') + '.' + dec_part)
+            try:
+                val = Decimal(int_part.replace(',', '') + '.' + dec_part)
+            except Exception:
+                raise ValueError("Invalid numeric format")
         else:
             # EU/VN format: 1.234,56 or 1.234.567,89
             if document_locale == "US":
@@ -175,17 +184,20 @@ def parse_number(
             int_part = s[:last_comma]
             dec_part = s[last_comma + 1:]
             parts = int_part.split('.')
-            if not (1 <= len(parts[0]) <= 3) or any(len(p) != 3 for p in parts[1:]):
+            if not all(p.isdigit() for p in parts) or not (1 <= len(parts[0]) <= 3) or any(len(p) != 3 for p in parts[1:]):
                 raise ValueError("Invalid numeric format")
             if not dec_part.isdigit():
                 raise ValueError("Invalid numeric format")
-            val = Decimal(int_part.replace('.', '') + '.' + dec_part)
+            try:
+                val = Decimal(int_part.replace('.', '') + '.' + dec_part)
+            except Exception:
+                raise ValueError("Invalid numeric format")
 
     elif comma_count > 0 and dot_count == 0:
         if comma_count > 1:
             # Multiple commas: must be thousands separators (1,234,567)
             parts = s.split(',')
-            if not (1 <= len(parts[0]) <= 3) or any(len(p) != 3 for p in parts[1:]):
+            if not all(p.isdigit() for p in parts) or not (1 <= len(parts[0]) <= 3) or any(len(p) != 3 for p in parts[1:]):
                 raise ValueError("Invalid numeric format")
             val = Decimal(s.replace(',', ''))
         else:
@@ -212,7 +224,7 @@ def parse_number(
         if dot_count > 1:
             # Multiple dots: must be thousands separators (1.234.567)
             parts = s.split('.')
-            if not (1 <= len(parts[0]) <= 3) or any(len(p) != 3 for p in parts[1:]):
+            if not all(p.isdigit() for p in parts) or not (1 <= len(parts[0]) <= 3) or any(len(p) != 3 for p in parts[1:]):
                 raise ValueError("Invalid numeric format")
             val = Decimal(s.replace('.', ''))
         else:
@@ -222,7 +234,7 @@ def parse_number(
             if not left.isdigit() or not right.isdigit():
                 raise ValueError("Invalid numeric format")
 
-            if len(right) == 3 and (1 <= len(left) <= 3):
+            if len(right) == 3 and (1 <= len(left) <= 3) and left != '0':
                 if document_locale == "EU_VN":
                     # In EU/VN, dot with 3 digits is thousands separator (1.234 -> 1234)
                     val = Decimal(left + right)
@@ -232,7 +244,7 @@ def parse_number(
                 else:
                     raise AmbiguousNumberError("Ambiguous numeric format without locale context")
             else:
-                # Decimal separator (US default)
+                # Decimal separator (US default, or left == '0' like 0.123 / 0.005)
                 val = Decimal(left + '.' + right)
 
     if is_negative:
