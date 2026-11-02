@@ -425,3 +425,74 @@ def test_empty_folder_handling(tmp_path: Path, capsys: pytest.CaptureFixture) ->
     assert ret == 0
     captured = capsys.readouterr()
     assert "Tổng số file:       0" in captured.out
+
+
+# =============================================================================
+# 9. Test Wave 3 Group E Security & Reliability Features
+# =============================================================================
+
+def test_cli_month_regex_validation_rejects_path_traversal(tmp_path: Path) -> None:
+    """CLI must reject invalid --month format to prevent path traversal."""
+    invalid_months = ["../../bad", "2026/08", "2026-13", "2026-00", "invalid"]
+    for m in invalid_months:
+        with pytest.raises(SystemExit):
+            parse_args([str(tmp_path), "--month", m])
+
+
+def test_cli_permission_error_on_excel_export_handled_gracefully(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
+    """PermissionError on Excel write should print a helpful warning instead of crashing."""
+    invoices_dir = tmp_path / "invoices"
+    invoices_dir.mkdir()
+    _create_synthetic_pdf(invoices_dir / "inv1.pdf")
+    out_dir = tmp_path / "out_perm"
+
+    with patch("main.export_excel_summary", side_effect=PermissionError("File locked by Excel")):
+        with patch("main.process_invoice_file", return_value=_create_sample_canonical_invoice("inv1.pdf")):
+            ret = main([str(invoices_dir), "--out", str(out_dir)])
+
+    assert ret == 0
+    captured = capsys.readouterr()
+    assert "PermissionError" in captured.out or "đóng file Excel" in captured.out or "Excel" in captured.out
+
+
+def test_cli_dry_run_exception_isolated(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+    """An exception on one file in --dry-run must not halt the batch."""
+    invoices_dir = tmp_path / "invoices_dry"
+    invoices_dir.mkdir()
+    f1 = _create_synthetic_pdf(invoices_dir / "inv1.pdf")
+    f2 = _create_synthetic_pdf(invoices_dir / "inv2.pdf")
+
+    call_records = []
+
+    def mock_process(file_path, **kwargs):
+        call_records.append(file_path.name)
+        if file_path.name == "inv1.pdf":
+            raise RuntimeError("Dry run error on inv1")
+        print("MASKED_PAYLOAD_INV2")
+
+    with patch("main.process_invoice_file", side_effect=mock_process):
+        ret = main([str(invoices_dir), "--dry-run"])
+
+    assert ret == 0
+    # Both files were processed despite inv1 error
+    assert "inv1.pdf" in call_records
+    assert "inv2.pdf" in call_records
+
+
+def test_cli_only_enables_debug_logging(tmp_path: Path) -> None:
+    """Running with --only sets logging level to DEBUG."""
+    invoices_dir = tmp_path / "invoices_only"
+    invoices_dir.mkdir()
+    f1 = _create_synthetic_pdf(invoices_dir / "test_only.pdf")
+
+    with patch("main.process_invoice_file", return_value=_create_sample_canonical_invoice("test_only.pdf")):
+        with patch("logging.basicConfig") as mock_logging_config:
+            main([str(invoices_dir), "--only", "test_only.pdf"])
+            assert mock_logging_config.called
+            # Check level=logging.DEBUG passed
+            args, kwargs = mock_logging_config.call_args
+            import logging
+            assert kwargs.get("level") == logging.DEBUG
+

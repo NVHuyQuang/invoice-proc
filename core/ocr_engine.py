@@ -10,6 +10,7 @@ PLAN 2.1, 2.5:
 from __future__ import annotations
 
 import logging
+import threading
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 import numpy as np
 
@@ -89,6 +90,7 @@ class OCREngine:
 
     _shared_backends: Dict[str, Any] = {}
     _instances: Dict[str, "OCREngine"] = {}
+    _class_lock: threading.Lock = threading.Lock()
 
     def __init__(
         self,
@@ -110,6 +112,7 @@ class OCREngine:
         self.use_shared_engine = use_shared_engine
         self.mock = mock
         self.errors: List[Dict[str, Any]] = []
+        self._lock: threading.Lock = threading.Lock()
 
         if self.mock and self._engine is None:
             self._engine = MockPaddleOCR()
@@ -120,17 +123,19 @@ class OCREngine:
     @classmethod
     def get_instance(cls, lang: str = "en", **kwargs: Any) -> "OCREngine":
         """Get or create a cached singleton OCREngine instance for a given language."""
-        if lang not in cls._instances:
-            inst = cls(lang=lang, **kwargs)
-            inst.initialize()
-            cls._instances[lang] = inst
-        return cls._instances[lang]
+        with cls._class_lock:
+            if lang not in cls._instances:
+                inst = cls(lang=lang, **kwargs)
+                inst.initialize()
+                cls._instances[lang] = inst
+            return cls._instances[lang]
 
     @classmethod
     def clear_cache(cls) -> None:
         """Clear shared backend and instance caches."""
-        cls._shared_backends.clear()
-        cls._instances.clear()
+        with cls._class_lock:
+            cls._shared_backends.clear()
+            cls._instances.clear()
 
     def initialize(self, mock_fallback: bool = False) -> None:
         """Initialize OCR engine once for the batch.
@@ -138,52 +143,53 @@ class OCREngine:
         Args:
             mock_fallback: Fall back to MockPaddleOCR if backend loading fails.
         """
-        if self._engine is not None:
-            return
+        with self._lock:
+            if self._engine is not None:
+                return
 
-        if self.mock:
-            self._engine = MockPaddleOCR()
-            return
+            if self.mock:
+                self._engine = MockPaddleOCR()
+                return
 
-        try:
-            from paddleocr import PaddleOCR
-
-            # PLAN 2.1 PaddleOCR v3 configuration
             try:
-                backend = PaddleOCR(
-                    lang=self.lang,
-                    use_doc_orientation_classify=True,
-                    use_doc_unwarping=False,
-                    use_textline_orientation=True,
-                )
-            except TypeError:
-                # PLAN 2.1 fallback for v2.x
+                from paddleocr import PaddleOCR
+
+                # PLAN 2.1 PaddleOCR v3 configuration
                 try:
                     backend = PaddleOCR(
                         lang=self.lang,
-                        use_angle_cls=True,
-                        show_log=False,
+                        use_doc_orientation_classify=True,
+                        use_doc_unwarping=False,
+                        use_textline_orientation=True,
                     )
                 except TypeError:
-                    backend = PaddleOCR(lang=self.lang)
+                    # PLAN 2.1 fallback for v2.x
+                    try:
+                        backend = PaddleOCR(
+                            lang=self.lang,
+                            use_angle_cls=True,
+                            show_log=False,
+                        )
+                    except TypeError:
+                        backend = PaddleOCR(lang=self.lang)
 
-            self._engine = backend
-            if self.use_shared_engine:
-                OCREngine._shared_backends[self.lang] = backend
-            logger.info("Initialized PaddleOCR engine (lang=%s)", self.lang)
+                self._engine = backend
+                if self.use_shared_engine:
+                    OCREngine._shared_backends[self.lang] = backend
+                logger.info("Initialized PaddleOCR engine (lang=%s)", self.lang)
 
-        except ImportError as e:
-            if mock_fallback:
-                logger.warning("PaddleOCR not installed; falling back to MockPaddleOCR: %s", e)
-                self._engine = MockPaddleOCR()
-            else:
-                raise RuntimeError("PaddleOCR is not installed. Install paddleocr or provide mock=True.") from e
-        except Exception as e:
-            if mock_fallback:
-                logger.warning("Failed to initialize PaddleOCR (%s); falling back to MockPaddleOCR", e)
-                self._engine = MockPaddleOCR()
-            else:
-                raise RuntimeError(f"Failed to initialize PaddleOCR: {e}") from e
+            except ImportError as e:
+                if mock_fallback:
+                    logger.warning("PaddleOCR not installed; falling back to MockPaddleOCR: %s", e)
+                    self._engine = MockPaddleOCR()
+                else:
+                    raise RuntimeError("PaddleOCR is not installed. Install paddleocr or provide mock=True.") from e
+            except Exception as e:
+                if mock_fallback:
+                    logger.warning("Failed to initialize PaddleOCR (%s); falling back to MockPaddleOCR", e)
+                    self._engine = MockPaddleOCR()
+                else:
+                    raise RuntimeError(f"Failed to initialize PaddleOCR: {e}") from e
 
     def predict(
         self,
@@ -203,31 +209,33 @@ class OCREngine:
         Returns:
             List of Word instances with source='ocr'.
         """
-        try:
-            if self._engine is None:
-                self.initialize()
+        with self._lock:
+            try:
+                if self._engine is None:
+                    self.initialize()
 
-            if not isinstance(img, np.ndarray):
-                raise TypeError(f"Expected img to be np.ndarray, got {type(img).__name__}")
-            if img.size == 0:
-                raise ValueError("Image array is empty (size == 0)")
+                if not isinstance(img, np.ndarray):
+                    raise TypeError(f"Expected img to be np.ndarray, got {type(img).__name__}")
+                if img.size == 0:
+                    raise ValueError("Image array is empty (size == 0)")
 
-            raw_res = self._call_backend(img)
-            words = self._parse_results(raw_res, page_num=page_num)
-            return words
+                raw_res = self._call_backend(img)
+                words = self._parse_results(raw_res, page_num=page_num)
+                return words
 
-        except Exception as e:
-            err_record = {
-                "page_num": page_num,
-                "error": str(e),
-                "exception_type": type(e).__name__,
-            }
-            self.errors.append(err_record)
-            logger.error("OCR prediction failed for page %s: %s", page_num, e)
+            except Exception as e:
+                err_record = {
+                    "page_num": page_num,
+                    "error": str(e),
+                    "exception_type": type(e).__name__,
+                }
+                self.errors.append(err_record)
+                logger.error("OCR prediction failed for page %s: %s", page_num, e)
 
-            if raise_on_error:
-                raise OCRError(f"OCR prediction failed for page {page_num}: {e}") from e
-            return []
+                if raise_on_error:
+                    raise OCRError(f"OCR prediction failed for page {page_num}: {e}") from e
+                return []
+
 
     def _call_backend(self, img: np.ndarray) -> Any:
         """Call underlying OCR backend (predict, ocr, or callable)."""

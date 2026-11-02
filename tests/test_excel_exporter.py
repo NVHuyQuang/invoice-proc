@@ -479,3 +479,110 @@ def test_contract_calls_safety_functions(monkeypatch, tmp_path, sample_invoices,
     assert save_calls[0] == out_file
     assert len(sanitize_calls) > 0
 
+
+def test_month_regex_validation_blocks_path_traversal(tmp_path, sample_invoices, sample_duplicates):
+    """Test invalid month strings are rejected to prevent path traversal."""
+    invalid_months = ["../../etc", "2026/08", "2026-13", "2026-00", "2026-8", "august-2026", "../summary"]
+    for m in invalid_months:
+        with pytest.raises(ValueError, match="Invalid month"):
+            export_excel_summary(sample_invoices, sample_duplicates, tmp_path, m)
+
+    # Valid format succeeds
+    out_file = export_excel_summary(sample_invoices, sample_duplicates, tmp_path, "2026-08")
+    assert out_file.exists()
+
+
+def test_sheet_1_excludes_duplicates_statement_and_other(tmp_path):
+    """Sheet 1 should exclude DUPLICATE invoices, statement, and other doc_types."""
+    inv_verified = CanonicalInvoice(
+        source_file="invoices/normal.pdf",
+        source_sha256="s1",
+        status=InvoiceStatus.VERIFIED,
+        doc_type=DocType.GOODS_INVOICE,
+        invoice_no="INV-100",
+        invoice_date="2026-08-01",
+        grand_total=Decimal("100.00"),
+        line_items=[CanonicalLineItem(item_name="Item 1", qty=Decimal("1"), unit_price=Decimal("100.00"), line_total=Decimal("100.00"))],
+    )
+    inv_duplicate = CanonicalInvoice(
+        source_file="invoices/dup.pdf",
+        source_sha256="s2",
+        status=InvoiceStatus.DUPLICATE,
+        is_duplicate=True,
+        duplicate_of="invoices/normal.pdf",
+        doc_type=DocType.GOODS_INVOICE,
+        invoice_no="INV-100",
+        invoice_date="2026-08-01",
+        grand_total=Decimal("100.00"),
+        line_items=[CanonicalLineItem(item_name="Item 1", qty=Decimal("1"), unit_price=Decimal("100.00"), line_total=Decimal("100.00"))],
+    )
+    inv_statement = CanonicalInvoice(
+        source_file="invoices/stmt.pdf",
+        source_sha256="s3",
+        status=InvoiceStatus.REVIEW_NEEDED,
+        doc_type=DocType.STATEMENT,
+        invoice_no="STMT-001",
+        invoice_date="2026-08-01",
+        grand_total=Decimal("500.00"),
+        review_reasons=["doc_type statement excluded"],
+    )
+    inv_other = CanonicalInvoice(
+        source_file="invoices/other.pdf",
+        source_sha256="s4",
+        status=InvoiceStatus.REVIEW_NEEDED,
+        doc_type=DocType.OTHER,
+        invoice_no="OTH-001",
+        invoice_date="2026-08-01",
+        grand_total=Decimal("50.00"),
+        review_reasons=["doc_type other excluded"],
+    )
+
+    invoices = [inv_verified, inv_duplicate, inv_statement, inv_other]
+    out_file = export_excel_summary(invoices, [], tmp_path, "2026-08")
+    wb = openpyxl.load_workbook(out_file)
+
+    # Sheet 1: Only inv_verified should be present
+    ws1 = wb["Invoice Overview"]
+    # 1 header + 1 verified invoice = 2 rows
+    assert ws1.max_row == 2
+    assert ws1.cell(row=2, column=2).value == "INV-100"
+    assert ws1.cell(row=2, column=9).value == "invoices/normal.pdf"
+
+    # Sheet 2: Only lines from inv_verified, none from inv_duplicate
+    ws2 = wb["Line Items Detail"]
+    assert ws2.max_row == 2
+    assert ws2.cell(row=2, column=1).value == "INV-100"
+
+    # Sheet 3: Discrepancy Alerts should contain statement and other
+    ws3 = wb["Discrepancy Alerts"]
+    files_in_sheet3 = [ws3.cell(row=r, column=6).value for r in range(2, ws3.max_row + 1)]
+    assert "invoices/stmt.pdf" in files_in_sheet3
+    assert "invoices/other.pdf" in files_in_sheet3
+    assert "invoices/normal.pdf" not in files_in_sheet3
+
+    # Sheet 4: Duplicates should contain inv_duplicate
+    ws4 = wb["Duplicates"]
+    files_in_sheet4 = [ws4.cell(row=r, column=1).value for r in range(2, ws4.max_row + 1)]
+    assert "invoices/dup.pdf" in files_in_sheet4
+
+
+def test_sheet_3_source_file_hyperlink(tmp_path):
+    """Sheet 3 column 6 'File gốc' should have a working openpyxl hyperlink."""
+    inv_alert = CanonicalInvoice(
+        source_file="invoices/bad_file.pdf",
+        source_sha256="s99",
+        status=InvoiceStatus.FAILED,
+        doc_type=DocType.GOODS_INVOICE,
+        invoice_no="INV-99",
+        invoice_date="2026-08-01",
+        review_reasons=["corrupted_file"],
+    )
+    out_file = export_excel_summary([inv_alert], [], tmp_path, "2026-08")
+    wb = openpyxl.load_workbook(out_file)
+    ws3 = wb["Discrepancy Alerts"]
+    cell = ws3.cell(row=2, column=6)
+    assert cell.value == "invoices/bad_file.pdf"
+    assert cell.hyperlink is not None
+    assert cell.hyperlink.target == "invoices/bad_file.pdf"
+
+
