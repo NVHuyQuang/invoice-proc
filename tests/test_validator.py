@@ -351,10 +351,10 @@ def test_review_needed_date_metadata_error(mock_t1, mock_t2, mock_t3, mock_meta)
 # REVIEW_NEEDED: Invariant - missing mandatory checks must NEVER be VERIFIED
 # =============================================================================
 
-def test_invariant_unimplemented_tier_checks_never_verified():
-    """Unimplemented tier checks (calling real unmocked stubs) must NEVER assign VERIFIED."""
+@patch("core.validator.validate_tier1_lines", side_effect=NotImplementedError("Stub not implemented"))
+def test_invariant_unimplemented_tier_checks_never_verified(mock_t1):
+    """Unimplemented tier checks (calling unmocked stubs) must NEVER assign VERIFIED."""
     inv = make_goods_invoice()
-    # On this branch, validator_lines and validator_totals have stubs raising NotImplementedError
     result = assign_invoice_status(inv)
     assert result.status == InvoiceStatus.REVIEW_NEEDED
     assert len(result.review_reasons) > 0
