@@ -82,24 +82,51 @@ def validate_tier3_grand_total(invoice: CanonicalInvoice) -> Tuple[bool, List[st
     tax_lines = [
         item.line_total
         for item in invoice.line_items
-        if item.kind == LineItemKind.TAX_LINE and item.line_total is not None
+        if (item.kind == LineItemKind.TAX_LINE or getattr(item.kind, "value", None) == LineItemKind.TAX_LINE.value)
+        and item.line_total is not None
     ]
     tax_lines_sum = sum(tax_lines, Decimal("0")) if tax_lines else None
     summary_tax = invoice.tax
 
-    candidate_taxes: List[Decimal] = []
-    if tax_lines_sum is not None:
-        candidate_taxes.append(tax_lines_sum)
-    if summary_tax is not None and summary_tax not in candidate_taxes:
-        candidate_taxes.append(summary_tax)
+    has_tax_conflict = False
+    tax_conflict_msg = None
     if (
         tax_lines_sum is not None
         and summary_tax is not None
         and abs(tax_lines_sum - summary_tax) > TIER3_TOLERANCE
     ):
-        candidate_taxes.append(tax_lines_sum + summary_tax)
+        has_tax_conflict = True
+        tax_conflict_msg = (
+            f"Tax conflict: tax lines sum ({tax_lines_sum}) and summary tax ({summary_tax}) "
+            f"differ by {abs(tax_lines_sum - summary_tax):.4f} > tolerance {TIER3_TOLERANCE}"
+        )
+
+    candidate_taxes: List[Decimal] = []
+    if summary_tax is not None:
+        candidate_taxes.append(summary_tax)
+    if tax_lines_sum is not None and tax_lines_sum not in candidate_taxes:
+        candidate_taxes.append(tax_lines_sum)
     if not candidate_taxes:
         candidate_taxes.append(Decimal("0"))
+
+    # Deposits: check line items with DEPOSIT kind
+    deposit_lines = [
+        item.line_total
+        for item in invoice.line_items
+        if (
+            item.kind == LineItemKind.DEPOSIT
+            or getattr(item.kind, "value", None) == LineItemKind.DEPOSIT.value
+            or str(item.kind).lower() == "deposit"
+        )
+        and item.line_total is not None
+    ]
+    if deposit_lines:
+        deposit_sum = sum(deposit_lines, Decimal("0"))
+        candidate_deposits = [deposit_sum]
+        if deposit_sum > 0:
+            candidate_deposits.append(-deposit_sum)
+    else:
+        candidate_deposits = [Decimal("0")]
 
     # Shipping: from summary or shipping line items
     shipping_lines = [
@@ -127,28 +154,42 @@ def validate_tier3_grand_total(invoice: CanonicalInvoice) -> Tuple[bool, List[st
     best_diff = None
     best_expected = None
 
-    for candidate_tax in candidate_taxes:
-        expected = subtotal + candidate_tax + shipping + tip + fees_sum - discount
-        diff = abs(expected - grand_total)
+    if not has_tax_conflict:
+        for candidate_tax in candidate_taxes:
+            for candidate_deposit in candidate_deposits:
+                expected = subtotal + candidate_tax + shipping + tip + fees_sum - discount + candidate_deposit
+                diff = abs(expected - grand_total)
 
-        if is_credit_memo:
-            diff_flipped = abs(-expected - grand_total)
-            diff_abs = abs(abs(expected) - abs(grand_total))
-            diff = min(diff, diff_flipped, diff_abs)
+                if is_credit_memo:
+                    diff_flipped = abs(-expected - grand_total)
+                    diff_abs = abs(abs(expected) - abs(grand_total))
+                    diff = min(diff, diff_flipped, diff_abs)
 
-        if best_diff is None or diff < best_diff:
-            best_diff = diff
-            best_expected = expected
+                if best_diff is None or diff < best_diff:
+                    best_diff = diff
+                    best_expected = expected
 
-        if diff <= TIER3_TOLERANCE:
-            return True, []
+                if diff <= TIER3_TOLERANCE:
+                    return True, []
+    else:
+        for candidate_tax in candidate_taxes:
+            for candidate_deposit in candidate_deposits:
+                expected = subtotal + candidate_tax + shipping + tip + fees_sum - discount + candidate_deposit
+                diff = abs(expected - grand_total)
+                if best_diff is None or diff < best_diff:
+                    best_diff = diff
+                    best_expected = expected
+
+    errors = []
+    if has_tax_conflict and tax_conflict_msg:
+        errors.append(tax_conflict_msg)
 
     chosen_tax = candidate_taxes[0]
-    errors = [
+    errors.append(
         f"Tier 3 grand total mismatch: subtotal ({subtotal}) + tax ({chosen_tax}) + "
         f"shipping ({shipping}) + tip ({tip}) + fees ({fees_sum}) - discount ({discount}) = "
         f"{best_expected}, but grand_total = {grand_total} (diff: {best_diff:.4f} > tolerance: {TIER3_TOLERANCE})"
-    ]
+    )
     return False, errors
 
 
@@ -188,9 +229,11 @@ def validate_tier4_utility_total(invoice: CanonicalInvoice) -> Tuple[bool, List[
     # Candidate 2: kind-aware sum
     payment_kinds = {"payment", "payments", "credit", "discount", "deposit"}
     kind_sum = Decimal("0")
-    for _, amount, kind in items:
+    for desc, amount, kind in items:
         k_str = str(kind.value if hasattr(kind, "value") else kind).lower() if kind else ""
-        if k_str in payment_kinds:
+        d_lower = desc.lower() if desc else ""
+        is_fee = any(kw in d_lower for kw in ("fee", "charge", "surcharge", "penalty", "interest"))
+        if k_str in payment_kinds and not is_fee:
             kind_sum -= abs(amount)
         else:
             kind_sum += amount
@@ -199,11 +242,32 @@ def validate_tier4_utility_total(invoice: CanonicalInvoice) -> Tuple[bool, List[
         return True, []
 
     # Candidate 3: description-aware sum
-    payment_keywords = ("payment", "paid", "credit", "thank you", "payments applied")
+    real_payment_patterns = (
+        "payment received",
+        "payment applied",
+        "payments applied",
+        "thank you",
+        "credit applied",
+        "credit received",
+        "previous payment",
+        "auto-pay",
+        "autopay",
+        "direct debit",
+    )
     desc_sum = Decimal("0")
     for desc, amount, _ in items:
         d_lower = desc.lower() if desc else ""
-        if any(kw in d_lower for kw in payment_keywords):
+        is_fee_or_charge = any(kw in d_lower for kw in ("fee", "charge", "surcharge", "penalty", "interest"))
+        is_real_payment = False
+        if not is_fee_or_charge:
+            if any(pat in d_lower for pat in real_payment_patterns):
+                is_real_payment = True
+            elif d_lower.strip() in ("payment", "payments", "credit", "paid"):
+                is_real_payment = True
+            elif d_lower.startswith(("payment -", "payment:", "payment (", "paid -", "paid:")):
+                is_real_payment = True
+
+        if amount < 0 or is_real_payment:
             desc_sum -= abs(amount)
         else:
             desc_sum += amount
@@ -226,6 +290,7 @@ def validate_dates_and_metadata(
 
     PLAN 5.4:
     - grand_total > 0 (unless credit memo).
+    - invoice_date and invoice_no presence.
     - due_date >= invoice_date if both are present.
     - invoice_date within target_month +- DATE_WINDOW_DAYS (45 days).
 
@@ -254,12 +319,17 @@ def validate_dates_and_metadata(
         else:
             messages.append("grand_total is missing")
 
-    # 2. due_date >= invoice_date if both are present
+    # 2. invoice_date and invoice_no checks (evaluated even when target_month is None)
     inv_date = _parse_date(invoice.invoice_date)
     due_date = _parse_date(invoice.due_date)
 
-    if invoice.invoice_date is not None and inv_date is None:
+    if not invoice.invoice_date or not str(invoice.invoice_date).strip():
+        messages.append("invoice_date is missing")
+    elif inv_date is None:
         messages.append(f"Unparseable invoice_date: '{invoice.invoice_date}'")
+
+    if not invoice.invoice_no or not str(invoice.invoice_no).strip():
+        messages.append("invoice_no is missing")
 
     if invoice.due_date is not None and due_date is None:
         messages.append(f"Unparseable due_date: '{invoice.due_date}'")

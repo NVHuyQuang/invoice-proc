@@ -228,17 +228,18 @@ def assign_invoice_status(
         # Tier 1: individual line items
         try:
             t1_passed, t1_errors, checkable_count, uncheckable_count = validate_tier1_lines(invoice.line_items)
-            total_lines = checkable_count + uncheckable_count
-            if total_lines == 0:
-                total_lines = len(invoice.line_items)
+            goods_total = checkable_count + uncheckable_count
 
-            checkable_ratio = (checkable_count / total_lines) if total_lines > 0 else 0.0
-            if checkable_ratio < MIN_CHECKABLE_LINE_RATIO:
-                reasons.append(
-                    f"Checkable lines ratio {checkable_ratio:.1%} is below minimum threshold "
-                    f"{MIN_CHECKABLE_LINE_RATIO:.1%} ({checkable_count}/{total_lines} checkable)"
-                )
-                tier1_ratio_ok = False
+            if goods_total > 0:
+                checkable_ratio = checkable_count / goods_total
+                if checkable_ratio < MIN_CHECKABLE_LINE_RATIO:
+                    reasons.append(
+                        f"Checkable lines ratio {checkable_ratio:.1%} is below minimum threshold "
+                        f"{MIN_CHECKABLE_LINE_RATIO:.1%} ({checkable_count}/{goods_total} checkable)"
+                    )
+                    tier1_ratio_ok = False
+                else:
+                    tier1_ratio_ok = True
             else:
                 tier1_ratio_ok = True
 
@@ -301,8 +302,13 @@ def assign_invoice_status(
     tier4_errors: List[str] = []
 
     # Tier 3 evaluation: standard for goods invoices, credit memos, receipts with subtotal/grand_total
-    if doc_type_val != DocType.UTILITY_BILL.value and (
-        invoice.grand_total is not None or invoice.subtotal is not None
+    is_non_subtotal_receipt = (
+        doc_type_val == DocType.RECEIPT.value and bool(invoice.charges) and invoice.subtotal is None
+    )
+    if (
+        doc_type_val != DocType.UTILITY_BILL.value
+        and not is_non_subtotal_receipt
+        and (invoice.grand_total is not None or invoice.subtotal is not None)
     ):
         tier3_attempted = True
         try:
@@ -334,8 +340,8 @@ def assign_invoice_status(
 
     # Total consistency verification
     totals_ok = False
-    if doc_type_val == DocType.UTILITY_BILL.value:
-        if tier4_attempted and tier4_passed:
+    if doc_type_val == DocType.UTILITY_BILL.value or is_non_subtotal_receipt:
+        if tier4_attempted and tier4_passed and not tier4_errors:
             totals_ok = True
         else:
             for err in tier4_errors:
@@ -345,21 +351,24 @@ def assign_invoice_status(
                 reasons.append("Tier 4 utility total check could not be evaluated")
   
     else:
-        if tier3_attempted and tier3_passed:
-            totals_ok = True
-        elif tier4_attempted and tier4_passed:
-            totals_ok = True
-        else:
-            if tier3_attempted:
+        if tier3_attempted or tier4_attempted:
+            t3_ok = (tier3_passed and not tier3_errors) if tier3_attempted else True
+            t4_ok = (tier4_passed and not tier4_errors) if tier4_attempted else True
+
+            if tier3_attempted and (not tier3_passed or tier3_errors):
                 for err in tier3_errors:
                     if err not in reasons:
                         reasons.append(err)
-            if tier4_attempted:
+
+            if tier4_attempted and (not tier4_passed or tier4_errors):
                 for err in tier4_errors:
                     if err not in reasons:
                         reasons.append(err)
-            if not tier3_attempted and not tier4_attempted:
-                reasons.append("Neither Tier 3 (grand total) nor Tier 4 (charges) could be evaluated")
+
+            totals_ok = t3_ok and t4_ok
+        else:
+            reasons.append("Neither Tier 3 (grand total) nor Tier 4 (charges) could be evaluated")
+            totals_ok = False
 
     # -------------------------------------------------------------
     # Step 6: Dates and metadata validation

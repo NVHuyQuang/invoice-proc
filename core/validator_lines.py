@@ -38,33 +38,39 @@ def validate_tier1_lines(line_items: List[CanonicalLineItem]) -> Tuple[bool, Lis
         is_goods = (kind_val == LineItemKind.GOODS.value or line.kind == LineItemKind.GOODS)
 
         # Only goods lines with qty, unit_price, and line_total can be arithmetically verified
-        if is_goods and line.qty is not None and line.unit_price is not None and line.line_total is not None:
-            qty = Decimal(str(line.qty))
-            unit_price = Decimal(str(line.unit_price))
-            line_total = Decimal(str(line.line_total))
+        if is_goods:
+            if line.qty is not None and line.unit_price is not None and line.line_total is not None:
+                qty = Decimal(str(line.qty))
+                unit_price = Decimal(str(line.unit_price))
+                line_total = Decimal(str(line.line_total))
 
-            expected_total = qty * unit_price
-            diff = abs(expected_total - line_total)
-            tolerance = TIER1_BASE_TOLERANCE + TIER1_QTY_FACTOR * abs(qty)
+                expected_total = qty * unit_price
+                diff = abs(expected_total - line_total)
+                tolerance = TIER1_BASE_TOLERANCE + TIER1_QTY_FACTOR * abs(qty)
 
-            if diff <= tolerance:
-                line.checkable = True
-                line.math_error = None
-                checkable_count += 1
+                if diff <= tolerance:
+                    line.checkable = True
+                    line.math_error = None
+                    checkable_count += 1
+                else:
+                    line.checkable = True
+                    err_msg = (
+                        f"Line {idx} ('{line.item_name}'): math mismatch "
+                        f"(diff: {diff} > tolerance: {tolerance})"
+                    )
+                    line.math_error = err_msg
+                    error_messages.append(err_msg)
+                    checkable_count += 1
+                    all_passed = False
             else:
-                line.checkable = True
-                err_msg = (
-                    f"Line {idx} ('{line.item_name}'): math mismatch "
-                    f"|{qty} * {unit_price} - {line_total}| = {diff} > tolerance {tolerance}"
-                )
-                line.math_error = err_msg
-                error_messages.append(err_msg)
-                checkable_count += 1
-                all_passed = False
+                line.checkable = False
+                line.math_error = None
+                uncheckable_count += 1
         else:
+            # Non-goods lines (discount, fee, tax_line, deposit, shipping) are not goods
+            # and do not increment uncheckable_count (so they don't penalize checkable_ratio)
             line.checkable = False
             line.math_error = None
-            uncheckable_count += 1
 
     if len(error_messages) > 0:
         all_passed = False

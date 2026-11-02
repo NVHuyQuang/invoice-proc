@@ -688,3 +688,53 @@ def test_assign_invoice_status_idempotent(mock_t1, mock_t2, mock_t3, mock_meta):
     count2 = len(res2.review_reasons)
     assert count1 == count2
     assert res1.status == res2.status
+
+
+# =============================================================================
+# Wave 3 Invariants: Non-goods lines, Tax Conflict, Math Contradictions
+# =============================================================================
+
+@patch("core.validator.validate_dates_and_metadata", return_value=[])
+@patch("core.validator.validate_tier3_grand_total", return_value=(True, []))
+@patch("core.validator.validate_tier2_subtotal", return_value=(True, []))
+def test_assign_invoice_status_coupons_do_not_penalize_checkable_ratio(mock_t2, mock_t3, mock_meta):
+    """An invoice with 4 checkable goods items and 2 discounts should have 100% goods ratio and be VERIFIED."""
+    lines = [
+        CanonicalLineItem(item_name=f"Goods {i}", qty=Decimal("1"), unit_price=Decimal("10.00"), line_total=Decimal("10.00"), kind=LineItemKind.GOODS)
+        for i in range(1, 5)
+    ]
+    lines.append(CanonicalLineItem(item_name="Coupon 1", line_total=Decimal("-5.00"), kind=LineItemKind.DISCOUNT))
+    lines.append(CanonicalLineItem(item_name="Coupon 2", line_total=Decimal("-2.00"), kind=LineItemKind.DISCOUNT))
+
+    inv = make_goods_invoice()
+    inv.line_items = lines
+    inv.subtotal = Decimal("33.00")
+    inv.grand_total = Decimal("33.00")
+
+    result = assign_invoice_status(inv)
+    assert result.status == InvoiceStatus.VERIFIED
+    assert result.review_reasons == []
+
+
+@patch("core.validator.validate_dates_and_metadata", return_value=[])
+@patch("core.validator.validate_tier2_subtotal", return_value=(True, []))
+@patch("core.validator.validate_tier1_lines", return_value=(True, [], 2, 0))
+def test_assign_invoice_status_tax_conflict_forces_review_needed(mock_t1, mock_t2, mock_meta):
+    """When tax lines and summary tax conflict, invoice must NEVER be VERIFIED."""
+    inv = make_goods_invoice()
+    inv.tax = Decimal("3.00")
+    inv.line_items.append(CanonicalLineItem(item_name="Tax Line", line_total=Decimal("5.00"), kind=LineItemKind.TAX_LINE))
+    inv.grand_total = Decimal("23.00")
+
+    result = assign_invoice_status(inv)
+    assert result.status == InvoiceStatus.REVIEW_NEEDED
+    assert any("tax" in r.lower() or "conflict" in r.lower() for r in result.review_reasons)
+
+
+@patch("core.validator.validate_dates_and_metadata", return_value=[])
+def test_assign_invoice_status_math_contradiction_never_verified(mock_meta):
+    """When any tier detects math error, VERIFIED is strictly forbidden."""
+    inv = make_goods_invoice(subtotal="100.00", grand_total="150.00")  # subtotal 100, grand total 150, tax 0 -> math mismatch
+    result = assign_invoice_status(inv)
+    assert result.status == InvoiceStatus.REVIEW_NEEDED
+    assert len(result.review_reasons) > 0
