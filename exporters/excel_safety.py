@@ -7,12 +7,21 @@ PLAN 6.2:
 """
 
 from pathlib import Path
+import os
+import tempfile
 from typing import Any
 import openpyxl
+
+DANGEROUS_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
 
 
 def sanitize_excel_cell(value: Any) -> Any:
     """Sanitize string values to neutralize formula injection payloads.
+
+    Prepends a single quote (') to any string value that starts with dangerous
+    formula trigger characters (=, +, -, @, \\t, \\r), including strings with
+    leading whitespace before dangerous characters.
+    Non-string values are returned unmodified.
 
     Args:
         value: Any cell value.
@@ -20,14 +29,41 @@ def sanitize_excel_cell(value: Any) -> Any:
     Returns:
         Sanitized value.
     """
-    raise NotImplementedError("W1-excel-safety implementation pending")
+    if isinstance(value, str) and value:
+        if value.startswith(DANGEROUS_PREFIXES) or value.lstrip().startswith(DANGEROUS_PREFIXES):
+            return f"'{value}"
+    return value
 
 
 def save_workbook_atomic(wb: openpyxl.Workbook, target_path: Path) -> None:
     """Save workbook to temporary file and atomically rename to target_path.
 
+    Writes to a temporary file in the same directory as target_path, then
+    atomically replaces target_path to ensure no corrupted or partially
+    written file is ever left in place. Cleans up temporary files on error.
+
     Args:
         wb: openpyxl Workbook instance.
         target_path: Destination path.
     """
-    raise NotImplementedError("W1-excel-safety implementation pending")
+    target = Path(target_path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    temp_fd, temp_file_path = tempfile.mkstemp(
+        dir=target.parent,
+        prefix=f".{target.name}.",
+        suffix=".tmp",
+    )
+    os.close(temp_fd)
+    temp_path = Path(temp_file_path)
+
+    try:
+        wb.save(temp_path)
+        os.replace(temp_path, target)
+    except Exception:
+        if temp_path.exists():
+            try:
+                temp_path.unlink()
+            except OSError:
+                pass
+        raise
