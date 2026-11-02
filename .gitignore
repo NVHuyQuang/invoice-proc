@@ -1,0 +1,36 @@
+# Environment and secrets
+.env*
+
+# Input and output data
+input_pdfs/
+output/
+logs/
+cache/
+samples/
+data_private/
+_work/
+eval/golden/
+
+# Python environments and cache
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+
+# Archives and sample data
+*.zip
+*.rar
+*.heic
+08.Aug 2026-*/
+Hyperpure invoice reading tool/
+
+# OMC state
+.omc/state/
+
+# Logs
+*.log
+
+# Tesseract local languages
+tools/tessdata/
