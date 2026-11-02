@@ -10,14 +10,87 @@ Handles:
 """
 
 from typing import Tuple, List, Optional
-from core.types import Vault
+import re
+from core.types import Vault, VaultEntry
+
+
+CURR_SYMS = r"[$€£¥₫₹₽₩]|đ|Đ"
+CURR_CODES = r"(?:USD|EUR|GBP|CAD|AUD|VND|JPY|CHF)"
+CURR = rf"(?:{CURR_SYMS}|{CURR_CODES})"
+
+TAX_FLAG = r"(?:T|TX|tx|t)"
+TAX_SUFFIX = rf"(?:[ \t]*(?:{TAX_FLAG}))\b"
+CR_SUFFIX = r"(?:[ \t]*(?:CR|cr|Cr))\b"
+
+NUM_CORE = r"(?:\d+(?:[.,]\d+)*|[.,]\d+)"
+
+# 1. Existing tokens / placeholders to preserve untouched:
+EXISTING_TOKEN = r"<[A-Za-z0-9_:]+>|__[A-Za-z0-9_]+__"
+
+# 2. Parenthesized negative numbers:
+# Covers: (12.50), ($12.50), $(12.50), [12.50], [$12.50], (1,234.56), (12.50 CR), (33.99T), etc.
+PAREN_NEG = (
+    rf"\([ \t]*(?:{CURR}[ \t]*)?[-+]?[ \t]*{NUM_CORE}(?:{TAX_SUFFIX}|{CR_SUFFIX})?[ \t]*(?:{CURR})?[ \t]*\)"
+    rf"|\[[ \t]*(?:{CURR}[ \t]*)?[-+]?[ \t]*{NUM_CORE}(?:{TAX_SUFFIX}|{CR_SUFFIX})?[ \t]*(?:{CURR})?[ \t]*\]"
+    rf"|{CURR}[ \t]*\([ \t]*[-+]?[ \t]*{NUM_CORE}(?:{TAX_SUFFIX}|{CR_SUFFIX})?[ \t]*\)"
+)
+
+# 3. Trailing minus negative:
+# Attached: 12.50-, $12.50-, 1,234.56-
+TRAILING_MINUS = rf"(?:{CURR}[ \t]*)?{NUM_CORE}(?:{TAX_SUFFIX})?-(?!\w)"
+
+# 4. Trailing CR negative:
+# 12.50 CR, 12.50CR, $12.50 CR
+TRAILING_CR = rf"(?:{CURR}[ \t]*)?{NUM_CORE}{CR_SUFFIX}"
+
+# 5. Leading minus negative:
+# -12.50, -$12.50, $-12.50, -1,234.56
+# Must not be preceded by word char or closing paren/bracket, and minus must attach to number/currency
+LEADING_MINUS = (
+    rf"(?<![\w\)\]])(?:-(?:{CURR}[ \t]*{NUM_CORE}|{NUM_CORE})|{CURR}[ \t]*-[ \t]*{NUM_CORE})(?:{TAX_SUFFIX})?\b"
+)
+
+# 6. Numbers with tax flag:
+# 33.99T, 33.99TX, 33.99 T
+TAX_NUMBER = rf"(?:{CURR}[ \t]*)?{NUM_CORE}{TAX_SUFFIX}"
+
+# 7. Numbers with currency prefix or suffix:
+# $33.99, €1.234,56, 33.99 USD, 500,000 VND, 500.000 đ
+CURR_NUMBER = rf"(?:{CURR}[ \t]*{NUM_CORE}|{NUM_CORE}[ \t]*(?:{CURR_SYMS}\b|{CURR_CODES}\b|đ\b|Đ\b|₫))"
+
+# 8. Hyphenated numbers (pure digits and hyphens, e.g. phone or pure digit ID):
+HYPHEN_NUM = r"\b\d+(?:-\d+)+\b"
+
+# 9. Alphanumeric IDs (contains both letter(s) and digit(s)):
+# e.g. INV-2026-0831, PO#12345, ACCT_9876, ORD/2026/01, A1234B, 1234-XYZ
+ALPHANUM_ID = r"\b(?=[A-Za-z0-9_/#:.-]*[A-Za-z])(?=[A-Za-z0-9_/#:.-]*\d)[A-Za-z0-9]+(?:[-_/#:.][A-Za-z0-9]+)*\b"
+
+# 10. Plain numbers:
+PLAIN_NUMBER = rf"\b{NUM_CORE}\b|{NUM_CORE}"
+
+TOKENIZER_REGEX = re.compile(
+    rf"({EXISTING_TOKEN})"
+    rf"|({PAREN_NEG})"
+    rf"|({TRAILING_MINUS})"
+    rf"|({TRAILING_CR})"
+    rf"|({LEADING_MINUS})"
+    rf"|({TAX_NUMBER})"
+    rf"|({CURR_NUMBER})"
+    rf"|({HYPHEN_NUM})"
+    rf"|({ALPHANUM_ID})"
+    rf"|({PLAIN_NUMBER})"
+)
+
+CURR_CHECK_RE = re.compile(rf"{CURR_SYMS}|{CURR_CODES}")
 
 
 def tokenize_numbers(
     text: str,
     vault: Vault,
     start_index: int = 1,
-    page: int = 1
+    page: int = 1,
+    bbox: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0),
+    conf: float = 1.0,
 ) -> Tuple[str, List[str]]:
     """Scan text and replace numbers and identifiers with <N_k> or <ID_k>.
 
@@ -26,8 +99,63 @@ def tokenize_numbers(
         vault: In-memory Vault to store VaultEntry objects.
         start_index: Starting integer for token counters.
         page: Page number for provenance.
+        bbox: Optional bounding box coordinates (x0, y0, x1, y1).
+        conf: Optional OCR / text confidence score.
 
     Returns:
         Tuple of (masked_text, list_of_assigned_tokens).
     """
-    raise NotImplementedError("W1-tok-numbers implementation pending")
+    if not text:
+        return text, []
+
+    assigned_tokens: List[str] = []
+    current_k = start_index
+    parts: List[str] = []
+    last_idx = 0
+
+    for m in TOKENIZER_REGEX.finditer(text):
+        parts.append(text[last_idx:m.start()])
+        raw = m.group(0)
+
+        # Group 1: Existing token -> preserve as is without re-tokenizing
+        if m.group(1):
+            parts.append(raw)
+            last_idx = m.end()
+            continue
+
+        # Check negative groups (2: paren_neg, 3: trailing_minus, 4: trailing_cr, 5: leading_minus)
+        is_neg = bool(m.group(2) or m.group(3) or m.group(4) or m.group(5))
+        # Check alphanumeric ID group (9)
+        is_id = bool(m.group(9))
+
+        if is_id:
+            token = f"<ID_{current_k}>"
+            kind = "id"
+            neg_hint = False
+        else:
+            neg_hint = is_neg
+            token = f"<N_{current_k}:neg>" if is_neg else f"<N_{current_k}>"
+            # Kind classification
+            if CURR_CHECK_RE.search(raw) or bool(m.group(4)):
+                kind = "money"
+            else:
+                kind = "number"
+
+        current_k += 1
+        assigned_tokens.append(token)
+        entry = VaultEntry(
+            token=token,
+            raw=raw,
+            kind=kind,
+            page=page,
+            bbox=bbox,
+            conf=conf,
+            neg_hint=neg_hint,
+        )
+        vault.add(entry)
+        parts.append(token)
+        last_idx = m.end()
+
+    parts.append(text[last_idx:])
+    return "".join(parts), assigned_tokens
+
