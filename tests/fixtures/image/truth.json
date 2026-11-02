@@ -1,0 +1,618 @@
+{
+  "thermal_receipt_narrow_skewed.png": {
+    "source_file": "thermal_receipt_narrow_skewed.png",
+    "vendor_name": "GREEN GROVE MARKET #42",
+    "invoice_no": "REC-2026-0815-42",
+    "invoice_date": "2026-08-15",
+    "due_date": null,
+    "currency": "USD",
+    "category": "Nguyên vật liệu thực phẩm",
+    "status": "VERIFIED",
+    "doc_type": "receipt",
+    "line_items": [
+      {
+        "item_name": "ORGANIC WHOLE MILK 1 GAL",
+        "qty": "2",
+        "unit_price": "4.50",
+        "line_total": "9.00",
+        "unit": "GAL",
+        "kind": "goods"
+      },
+      {
+        "item_name": "SOURDOUGH BREAD LOAF",
+        "qty": "3",
+        "unit_price": "5.25",
+        "line_total": "15.75",
+        "unit": "EA",
+        "kind": "goods"
+      },
+      {
+        "item_name": "ROASTED COFFEE BEANS 12OZ",
+        "qty": "1",
+        "unit_price": "14.99",
+        "line_total": "14.99",
+        "unit": "OZ",
+        "kind": "goods"
+      },
+      {
+        "item_name": "ORGANIC EGGS DOZEN",
+        "qty": "2",
+        "unit_price": "4.20",
+        "line_total": "8.40",
+        "unit": "DOZ",
+        "kind": "goods"
+      },
+      {
+        "item_name": "PAPER NAPKINS 200CT",
+        "qty": "1",
+        "unit_price": "8.50",
+        "line_total": "8.50",
+        "unit": "PK",
+        "kind": "goods"
+      }
+    ],
+    "charges": [],
+    "subtotal": "56.64",
+    "tax": "2.83",
+    "discount": "0.00",
+    "shipping": null,
+    "tip": null,
+    "fees": [],
+    "grand_total": "59.47",
+    "amount_due": "59.47"
+  },
+  "thermal_receipt_narrow_skewed": {
+    "source_file": "thermal_receipt_narrow_skewed.png",
+    "vendor_name": "GREEN GROVE MARKET #42",
+    "invoice_no": "REC-2026-0815-42",
+    "invoice_date": "2026-08-15",
+    "due_date": null,
+    "currency": "USD",
+    "category": "Nguyên vật liệu thực phẩm",
+    "status": "VERIFIED",
+    "doc_type": "receipt",
+    "line_items": [
+      {
+        "item_name": "ORGANIC WHOLE MILK 1 GAL",
+        "qty": "2",
+        "unit_price": "4.50",
+        "line_total": "9.00",
+        "unit": "GAL",
+        "kind": "goods"
+      },
+      {
+        "item_name": "SOURDOUGH BREAD LOAF",
+        "qty": "3",
+        "unit_price": "5.25",
+        "line_total": "15.75",
+        "unit": "EA",
+        "kind": "goods"
+      },
+      {
+        "item_name": "ROASTED COFFEE BEANS 12OZ",
+        "qty": "1",
+        "unit_price": "14.99",
+        "line_total": "14.99",
+        "unit": "OZ",
+        "kind": "goods"
+      },
+      {
+        "item_name": "ORGANIC EGGS DOZEN",
+        "qty": "2",
+        "unit_price": "4.20",
+        "line_total": "8.40",
+        "unit": "DOZ",
+        "kind": "goods"
+      },
+      {
+        "item_name": "PAPER NAPKINS 200CT",
+        "qty": "1",
+        "unit_price": "8.50",
+        "line_total": "8.50",
+        "unit": "PK",
+        "kind": "goods"
+      }
+    ],
+    "charges": [],
+    "subtotal": "56.64",
+    "tax": "2.83",
+    "discount": "0.00",
+    "shipping": null,
+    "tip": null,
+    "fees": [],
+    "grand_total": "59.47",
+    "amount_due": "59.47"
+  },
+  "thermal_receipt_faded.jpg": {
+    "source_file": "thermal_receipt_faded.jpg",
+    "vendor_name": "CORNER BISTRO & SUPPLIES",
+    "invoice_no": "CBS-2026-9012",
+    "invoice_date": "2026-08-18",
+    "due_date": null,
+    "currency": "USD",
+    "category": "Nguyên vật liệu thực phẩm",
+    "status": "VERIFIED",
+    "doc_type": "receipt",
+    "line_items": [
+      {
+        "item_name": "EXTRA VIRGIN OLIVE OIL 1L",
+        "qty": "2",
+        "unit_price": "18.50",
+        "line_total": "37.00",
+        "unit": "L",
+        "kind": "goods"
+      },
+      {
+        "item_name": "BALSAMIC VINEGAR 500ML",
+        "qty": "1",
+        "unit_price": "9.75",
+        "line_total": "9.75",
+        "unit": "ML",
+        "kind": "goods"
+      },
+      {
+        "item_name": "SEA SALT COARSE 1KG",
+        "qty": "4",
+        "unit_price": "3.25",
+        "line_total": "13.00",
+        "unit": "KG",
+        "kind": "goods"
+      },
+      {
+        "item_name": "BLACK PEPPERCORNS 8OZ",
+        "qty": "2",
+        "unit_price": "6.50",
+        "line_total": "13.00",
+        "unit": "OZ",
+        "kind": "goods"
+      }
+    ],
+    "charges": [],
+    "subtotal": "72.75",
+    "tax": "5.82",
+    "discount": "0.00",
+    "shipping": null,
+    "tip": null,
+    "fees": [],
+    "grand_total": "78.57",
+    "amount_due": "78.57"
+  },
+  "thermal_receipt_faded": {
+    "source_file": "thermal_receipt_faded.jpg",
+    "vendor_name": "CORNER BISTRO & SUPPLIES",
+    "invoice_no": "CBS-2026-9012",
+    "invoice_date": "2026-08-18",
+    "due_date": null,
+    "currency": "USD",
+    "category": "Nguyên vật liệu thực phẩm",
+    "status": "VERIFIED",
+    "doc_type": "receipt",
+    "line_items": [
+      {
+        "item_name": "EXTRA VIRGIN OLIVE OIL 1L",
+        "qty": "2",
+        "unit_price": "18.50",
+        "line_total": "37.00",
+        "unit": "L",
+        "kind": "goods"
+      },
+      {
+        "item_name": "BALSAMIC VINEGAR 500ML",
+        "qty": "1",
+        "unit_price": "9.75",
+        "line_total": "9.75",
+        "unit": "ML",
+        "kind": "goods"
+      },
+      {
+        "item_name": "SEA SALT COARSE 1KG",
+        "qty": "4",
+        "unit_price": "3.25",
+        "line_total": "13.00",
+        "unit": "KG",
+        "kind": "goods"
+      },
+      {
+        "item_name": "BLACK PEPPERCORNS 8OZ",
+        "qty": "2",
+        "unit_price": "6.50",
+        "line_total": "13.00",
+        "unit": "OZ",
+        "kind": "goods"
+      }
+    ],
+    "charges": [],
+    "subtotal": "72.75",
+    "tax": "5.82",
+    "discount": "0.00",
+    "shipping": null,
+    "tip": null,
+    "fees": [],
+    "grand_total": "78.57",
+    "amount_due": "78.57"
+  },
+  "receipt_exif_rot90.jpg": {
+    "source_file": "receipt_exif_rot90.jpg",
+    "vendor_name": "METRO RESTAURANT DEPOT",
+    "invoice_no": "MRD-8841-2026",
+    "invoice_date": "2026-08-10",
+    "due_date": null,
+    "currency": "USD",
+    "category": "Nguyên vật liệu thực phẩm",
+    "status": "VERIFIED",
+    "doc_type": "receipt",
+    "line_items": [
+      {
+        "item_name": "ALL PURPOSE FLOUR 25LB",
+        "qty": "2",
+        "unit_price": "16.50",
+        "line_total": "33.00",
+        "unit": "LB",
+        "kind": "goods"
+      },
+      {
+        "item_name": "CANE SUGAR 10LB",
+        "qty": "3",
+        "unit_price": "8.20",
+        "line_total": "24.60",
+        "unit": "LB",
+        "kind": "goods"
+      },
+      {
+        "item_name": "UNSALTED BUTTER 1LB",
+        "qty": "10",
+        "unit_price": "4.10",
+        "line_total": "41.00",
+        "unit": "LB",
+        "kind": "goods"
+      }
+    ],
+    "charges": [],
+    "subtotal": "98.60",
+    "tax": "0.00",
+    "discount": "0.00",
+    "shipping": null,
+    "tip": null,
+    "fees": [],
+    "grand_total": "98.60",
+    "amount_due": "98.60"
+  },
+  "receipt_exif_rot90": {
+    "source_file": "receipt_exif_rot90.jpg",
+    "vendor_name": "METRO RESTAURANT DEPOT",
+    "invoice_no": "MRD-8841-2026",
+    "invoice_date": "2026-08-10",
+    "due_date": null,
+    "currency": "USD",
+    "category": "Nguyên vật liệu thực phẩm",
+    "status": "VERIFIED",
+    "doc_type": "receipt",
+    "line_items": [
+      {
+        "item_name": "ALL PURPOSE FLOUR 25LB",
+        "qty": "2",
+        "unit_price": "16.50",
+        "line_total": "33.00",
+        "unit": "LB",
+        "kind": "goods"
+      },
+      {
+        "item_name": "CANE SUGAR 10LB",
+        "qty": "3",
+        "unit_price": "8.20",
+        "line_total": "24.60",
+        "unit": "LB",
+        "kind": "goods"
+      },
+      {
+        "item_name": "UNSALTED BUTTER 1LB",
+        "qty": "10",
+        "unit_price": "4.10",
+        "line_total": "41.00",
+        "unit": "LB",
+        "kind": "goods"
+      }
+    ],
+    "charges": [],
+    "subtotal": "98.60",
+    "tax": "0.00",
+    "discount": "0.00",
+    "shipping": null,
+    "tip": null,
+    "fees": [],
+    "grand_total": "98.60",
+    "amount_due": "98.60"
+  },
+  "receipt_exif_rot180.jpg": {
+    "source_file": "receipt_exif_rot180.jpg",
+    "vendor_name": "PACIFIC CLEANING & PACKAGING",
+    "invoice_no": "PCP-4019-AUG26",
+    "invoice_date": "2026-08-22",
+    "due_date": null,
+    "currency": "USD",
+    "category": "Bao bì/vật dụng",
+    "status": "VERIFIED",
+    "doc_type": "receipt",
+    "line_items": [
+      {
+        "item_name": "TAKEOUT CONTAINER 9X9 150CT",
+        "qty": "2",
+        "unit_price": "32.00",
+        "line_total": "64.00",
+        "unit": "CT",
+        "kind": "goods"
+      },
+      {
+        "item_name": "BIODEGRADABLE FORKS 500CT",
+        "qty": "1",
+        "unit_price": "18.50",
+        "line_total": "18.50",
+        "unit": "CT",
+        "kind": "goods"
+      },
+      {
+        "item_name": "CLEAR DRINK CUPS 16OZ 1000CT",
+        "qty": "1",
+        "unit_price": "45.00",
+        "line_total": "45.00",
+        "unit": "CT",
+        "kind": "goods"
+      }
+    ],
+    "charges": [],
+    "subtotal": "127.50",
+    "tax": "10.20",
+    "discount": "0.00",
+    "shipping": null,
+    "tip": null,
+    "fees": [],
+    "grand_total": "137.70",
+    "amount_due": "137.70"
+  },
+  "receipt_exif_rot180": {
+    "source_file": "receipt_exif_rot180.jpg",
+    "vendor_name": "PACIFIC CLEANING & PACKAGING",
+    "invoice_no": "PCP-4019-AUG26",
+    "invoice_date": "2026-08-22",
+    "due_date": null,
+    "currency": "USD",
+    "category": "Bao bì/vật dụng",
+    "status": "VERIFIED",
+    "doc_type": "receipt",
+    "line_items": [
+      {
+        "item_name": "TAKEOUT CONTAINER 9X9 150CT",
+        "qty": "2",
+        "unit_price": "32.00",
+        "line_total": "64.00",
+        "unit": "CT",
+        "kind": "goods"
+      },
+      {
+        "item_name": "BIODEGRADABLE FORKS 500CT",
+        "qty": "1",
+        "unit_price": "18.50",
+        "line_total": "18.50",
+        "unit": "CT",
+        "kind": "goods"
+      },
+      {
+        "item_name": "CLEAR DRINK CUPS 16OZ 1000CT",
+        "qty": "1",
+        "unit_price": "45.00",
+        "line_total": "45.00",
+        "unit": "CT",
+        "kind": "goods"
+      }
+    ],
+    "charges": [],
+    "subtotal": "127.50",
+    "tax": "10.20",
+    "discount": "0.00",
+    "shipping": null,
+    "tip": null,
+    "fees": [],
+    "grand_total": "137.70",
+    "amount_due": "137.70"
+  },
+  "receipt_exif_rot270.png": {
+    "source_file": "receipt_exif_rot270.png",
+    "vendor_name": "VALLEY FRESH WHOLESALE",
+    "invoice_no": "VFW-20260825-7",
+    "invoice_date": "2026-08-25",
+    "due_date": null,
+    "currency": "USD",
+    "category": "Nguyên vật liệu thực phẩm",
+    "status": "VERIFIED",
+    "doc_type": "receipt",
+    "line_items": [
+      {
+        "item_name": "ROMAINE LETTUCE 24CT",
+        "qty": "2",
+        "unit_price": "22.00",
+        "line_total": "44.00",
+        "unit": "CT",
+        "kind": "goods"
+      },
+      {
+        "item_name": "CHERRY TOMATOES 12PT",
+        "qty": "1",
+        "unit_price": "19.50",
+        "line_total": "19.50",
+        "unit": "PT",
+        "kind": "goods"
+      },
+      {
+        "item_name": "RED ONIONS 25LB",
+        "qty": "1",
+        "unit_price": "16.00",
+        "line_total": "16.00",
+        "unit": "LB",
+        "kind": "goods"
+      },
+      {
+        "item_name": "CUCUMBERS 1 CS",
+        "qty": "1",
+        "unit_price": "21.00",
+        "line_total": "21.00",
+        "unit": "CS",
+        "kind": "goods"
+      }
+    ],
+    "charges": [],
+    "subtotal": "100.50",
+    "tax": "0.00",
+    "discount": "0.00",
+    "shipping": null,
+    "tip": null,
+    "fees": [],
+    "grand_total": "100.50",
+    "amount_due": "100.50"
+  },
+  "receipt_exif_rot270": {
+    "source_file": "receipt_exif_rot270.png",
+    "vendor_name": "VALLEY FRESH WHOLESALE",
+    "invoice_no": "VFW-20260825-7",
+    "invoice_date": "2026-08-25",
+    "due_date": null,
+    "currency": "USD",
+    "category": "Nguyên vật liệu thực phẩm",
+    "status": "VERIFIED",
+    "doc_type": "receipt",
+    "line_items": [
+      {
+        "item_name": "ROMAINE LETTUCE 24CT",
+        "qty": "2",
+        "unit_price": "22.00",
+        "line_total": "44.00",
+        "unit": "CT",
+        "kind": "goods"
+      },
+      {
+        "item_name": "CHERRY TOMATOES 12PT",
+        "qty": "1",
+        "unit_price": "19.50",
+        "line_total": "19.50",
+        "unit": "PT",
+        "kind": "goods"
+      },
+      {
+        "item_name": "RED ONIONS 25LB",
+        "qty": "1",
+        "unit_price": "16.00",
+        "line_total": "16.00",
+        "unit": "LB",
+        "kind": "goods"
+      },
+      {
+        "item_name": "CUCUMBERS 1 CS",
+        "qty": "1",
+        "unit_price": "21.00",
+        "line_total": "21.00",
+        "unit": "CS",
+        "kind": "goods"
+      }
+    ],
+    "charges": [],
+    "subtotal": "100.50",
+    "tax": "0.00",
+    "discount": "0.00",
+    "shipping": null,
+    "tip": null,
+    "fees": [],
+    "grand_total": "100.50",
+    "amount_due": "100.50"
+  },
+  "receipt_iphone_exif.heic": {
+    "source_file": "receipt_iphone_exif.heic",
+    "vendor_name": "HARBOR VIEW PROVISIONS",
+    "invoice_no": "HVP-2026-0829",
+    "invoice_date": "2026-08-29",
+    "due_date": null,
+    "currency": "USD",
+    "category": "Nguyên vật liệu thực phẩm",
+    "status": "VERIFIED",
+    "doc_type": "receipt",
+    "line_items": [
+      {
+        "item_name": "WILD SALMON FILLET 5LB",
+        "qty": "2",
+        "unit_price": "48.00",
+        "line_total": "96.00",
+        "unit": "LB",
+        "kind": "goods"
+      },
+      {
+        "item_name": "GULF SHRIMP 16/20 5LB",
+        "qty": "1",
+        "unit_price": "55.00",
+        "line_total": "55.00",
+        "unit": "LB",
+        "kind": "goods"
+      },
+      {
+        "item_name": "LEMONS FRESH 1 CS",
+        "qty": "1",
+        "unit_price": "24.50",
+        "line_total": "24.50",
+        "unit": "CS",
+        "kind": "goods"
+      }
+    ],
+    "charges": [],
+    "subtotal": "175.50",
+    "tax": "0.00",
+    "discount": "0.00",
+    "shipping": null,
+    "tip": null,
+    "fees": [],
+    "grand_total": "175.50",
+    "amount_due": "175.50"
+  },
+  "receipt_iphone_exif": {
+    "source_file": "receipt_iphone_exif.heic",
+    "vendor_name": "HARBOR VIEW PROVISIONS",
+    "invoice_no": "HVP-2026-0829",
+    "invoice_date": "2026-08-29",
+    "due_date": null,
+    "currency": "USD",
+    "category": "Nguyên vật liệu thực phẩm",
+    "status": "VERIFIED",
+    "doc_type": "receipt",
+    "line_items": [
+      {
+        "item_name": "WILD SALMON FILLET 5LB",
+        "qty": "2",
+        "unit_price": "48.00",
+        "line_total": "96.00",
+        "unit": "LB",
+        "kind": "goods"
+      },
+      {
+        "item_name": "GULF SHRIMP 16/20 5LB",
+        "qty": "1",
+        "unit_price": "55.00",
+        "line_total": "55.00",
+        "unit": "LB",
+        "kind": "goods"
+      },
+      {
+        "item_name": "LEMONS FRESH 1 CS",
+        "qty": "1",
+        "unit_price": "24.50",
+        "line_total": "24.50",
+        "unit": "CS",
+        "kind": "goods"
+      }
+    ],
+    "charges": [],
+    "subtotal": "175.50",
+    "tax": "0.00",
+    "discount": "0.00",
+    "shipping": null,
+    "tip": null,
+    "fees": [],
+    "grand_total": "175.50",
+    "amount_due": "175.50"
+  }
+}

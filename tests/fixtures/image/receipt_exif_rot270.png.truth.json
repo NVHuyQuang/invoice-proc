@@ -1,0 +1,54 @@
+{
+  "source_file": "receipt_exif_rot270.png",
+  "vendor_name": "VALLEY FRESH WHOLESALE",
+  "invoice_no": "VFW-20260825-7",
+  "invoice_date": "2026-08-25",
+  "due_date": null,
+  "currency": "USD",
+  "category": "Nguyên vật liệu thực phẩm",
+  "status": "VERIFIED",
+  "doc_type": "receipt",
+  "line_items": [
+    {
+      "item_name": "ROMAINE LETTUCE 24CT",
+      "qty": "2",
+      "unit_price": "22.00",
+      "line_total": "44.00",
+      "unit": "CT",
+      "kind": "goods"
+    },
+    {
+      "item_name": "CHERRY TOMATOES 12PT",
+      "qty": "1",
+      "unit_price": "19.50",
+      "line_total": "19.50",
+      "unit": "PT",
+      "kind": "goods"
+    },
+    {
+      "item_name": "RED ONIONS 25LB",
+      "qty": "1",
+      "unit_price": "16.00",
+      "line_total": "16.00",
+      "unit": "LB",
+      "kind": "goods"
+    },
+    {
+      "item_name": "CUCUMBERS 1 CS",
+      "qty": "1",
+      "unit_price": "21.00",
+      "line_total": "21.00",
+      "unit": "CS",
+      "kind": "goods"
+    }
+  ],
+  "charges": [],
+  "subtotal": "100.50",
+  "tax": "0.00",
+  "discount": "0.00",
+  "shipping": null,
+  "tip": null,
+  "fees": [],
+  "grand_total": "100.50",
+  "amount_due": "100.50"
+}

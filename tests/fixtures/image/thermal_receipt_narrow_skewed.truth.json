@@ -1,0 +1,62 @@
+{
+  "source_file": "thermal_receipt_narrow_skewed.png",
+  "vendor_name": "GREEN GROVE MARKET #42",
+  "invoice_no": "REC-2026-0815-42",
+  "invoice_date": "2026-08-15",
+  "due_date": null,
+  "currency": "USD",
+  "category": "Nguyên vật liệu thực phẩm",
+  "status": "VERIFIED",
+  "doc_type": "receipt",
+  "line_items": [
+    {
+      "item_name": "ORGANIC WHOLE MILK 1 GAL",
+      "qty": "2",
+      "unit_price": "4.50",
+      "line_total": "9.00",
+      "unit": "GAL",
+      "kind": "goods"
+    },
+    {
+      "item_name": "SOURDOUGH BREAD LOAF",
+      "qty": "3",
+      "unit_price": "5.25",
+      "line_total": "15.75",
+      "unit": "EA",
+      "kind": "goods"
+    },
+    {
+      "item_name": "ROASTED COFFEE BEANS 12OZ",
+      "qty": "1",
+      "unit_price": "14.99",
+      "line_total": "14.99",
+      "unit": "OZ",
+      "kind": "goods"
+    },
+    {
+      "item_name": "ORGANIC EGGS DOZEN",
+      "qty": "2",
+      "unit_price": "4.20",
+      "line_total": "8.40",
+      "unit": "DOZ",
+      "kind": "goods"
+    },
+    {
+      "item_name": "PAPER NAPKINS 200CT",
+      "qty": "1",
+      "unit_price": "8.50",
+      "line_total": "8.50",
+      "unit": "PK",
+      "kind": "goods"
+    }
+  ],
+  "charges": [],
+  "subtotal": "56.64",
+  "tax": "2.83",
+  "discount": "0.00",
+  "shipping": null,
+  "tip": null,
+  "fees": [],
+  "grand_total": "59.47",
+  "amount_due": "59.47"
+}
