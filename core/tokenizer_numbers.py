@@ -18,9 +18,9 @@ CURR_SYMS = r"[$€£¥₫₹₽₩]|đ|Đ"
 CURR_CODES = r"(?:USD|EUR|GBP|CAD|AUD|VND|JPY|CHF)"
 CURR = rf"(?:{CURR_SYMS}|{CURR_CODES})"
 
-TAX_FLAG = r"(?:T|TX|tx|t)"
+TAX_FLAG = r"(?:TX|tx|[TtFfNnEe])"
 TAX_SUFFIX = rf"(?:[ \t]*(?:{TAX_FLAG}))\b"
-CR_SUFFIX = r"(?:[ \t]*(?:CR|cr|Cr))\b"
+CR_SUFFIX = r"(?:[ \t]*(?:CR|cr|Cr|DR|dr|Dr))\b"
 
 NUM_CORE = r"(?:\d+(?:[.,]\d+)*|[.,]\d+)"
 
@@ -36,18 +36,21 @@ PAREN_NEG = (
 )
 
 # 3. Trailing minus negative:
-# Attached: 12.50-, $12.50-, 1,234.56-
-TRAILING_MINUS = rf"(?:{CURR}[ \t]*)?{NUM_CORE}(?:{TAX_SUFFIX})?-(?!\w)"
+# Attached: 12.50-, $12.50-, 1,234.56- or spaced: 12.50 -, $12.50 -
+TRAILING_MINUS = (
+    rf"(?:{CURR}[ \t]*)?{NUM_CORE}(?:{TAX_SUFFIX})?"
+    rf"(?:-(?!\w)|[ \t]+-(?![ \t]*(?:{CURR}|\d)))"
+)
 
-# 4. Trailing CR negative:
-# 12.50 CR, 12.50CR, $12.50 CR
+# 4. Trailing CR/DR negative:
+# 12.50 CR, 12.50CR, $12.50 CR, 12.50 DR
 TRAILING_CR = rf"(?:{CURR}[ \t]*)?{NUM_CORE}{CR_SUFFIX}"
 
 # 5. Leading minus negative:
-# -12.50, -$12.50, $-12.50, -1,234.56
-# Must not be preceded by word char or closing paren/bracket, and minus must attach to number/currency
+# -12.50, -$12.50, $-12.50, -1,234.56, - 12.50, - $12.50
+# Must not be preceded by word char or closing paren/bracket
 LEADING_MINUS = (
-    rf"(?<![\w\)\]])(?:-(?:{CURR}[ \t]*{NUM_CORE}|{NUM_CORE})|{CURR}[ \t]*-[ \t]*{NUM_CORE})(?:{TAX_SUFFIX})?\b"
+    rf"(?<![\w\)\]])(?:-[ \t]*(?:{CURR}[ \t]*{NUM_CORE}|{NUM_CORE})|{CURR}[ \t]*-[ \t]*{NUM_CORE})(?:{TAX_SUFFIX})?\b"
 )
 
 # 6. Numbers with tax flag:
@@ -127,6 +130,17 @@ def tokenize_numbers(
         is_neg = bool(m.group(2) or m.group(3) or m.group(4) or m.group(5))
         # Check alphanumeric ID group (9)
         is_id = bool(m.group(9))
+
+        # Check if leading minus is actually an infix subtraction operator (e.g. "100.00 - 10.00")
+        if m.group(5) and not m.group(2) and not m.group(3) and not m.group(4):
+            prev_text = text[:m.start()].rstrip()
+            if prev_text and prev_text[-1] in "0123456789)]>":
+                minus_match = re.match(r"^-[ \t]*", raw)
+                if minus_match:
+                    minus_prefix = minus_match.group(0)
+                    parts.append(minus_prefix)
+                    raw = raw[len(minus_prefix):]
+                    is_neg = False
 
         if is_id:
             token = f"<ID_{current_k}>"

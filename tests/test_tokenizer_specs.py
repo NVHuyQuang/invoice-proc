@@ -95,9 +95,10 @@ class TestPositiveSpecs:
             assert unprotect_specs(protected, specs) == case
 
     def test_all_config_spec_units_attached(self):
-        """Verify attached specs work for single-word units in SPEC_UNITS."""
+        """Verify attached specs work for single-word units in SPEC_UNITS (excluding counting units EA, CS, CASE, BOX)."""
+        disallowed_attached = {"FL OZ", "EA", "CS", "CASE", "BOX"}
         for unit in config.SPEC_UNITS:
-            if unit == "FL OZ":
+            if unit in disallowed_attached:
                 continue
             text = f"10{unit}"
             protected, specs = protect_specs(text)
@@ -192,6 +193,34 @@ class TestNegativeSpecs:
         for case in cases:
             protected, specs = protect_specs(case)
             assert len(specs) == 0, f"Word {case!r} must not be preserved as spec, got: {specs}"
+            assert protected == case
+
+    def test_long_ids_not_matched_as_specs(self):
+        """Long invoice or account IDs like 12345678-CT or 98765432-PK must not match specs."""
+        cases = ["12345678-CT", "98765432-PK", "12345-BOX", "87654321-CS"]
+        for case in cases:
+            protected, specs = protect_specs(case)
+            assert len(specs) == 0, f"Long ID {case!r} must not be preserved as spec, got: {specs}"
+            assert protected == case
+
+    def test_hyphen_with_spaces_not_spec(self):
+        """Hyphens with spaces must not match specs (e.g. '10 - CASE', '12 - PACK')."""
+        cases = ["10 - CASE", "12 - PACK", "6 - CT", "10 - INCH"]
+        for case in cases:
+            protected, specs = protect_specs(case)
+            assert len(specs) == 0, f"Spaced hyphen {case!r} must not be preserved as spec, got: {specs}"
+            assert protected == case
+
+    def test_attached_counting_units_not_spec(self):
+        """Counting units EA, CS, CASE, BOX attached to numbers must not be preserved as specs."""
+        cases = [
+            "3EA", "1CS", "1CASE", "5BOX",
+            "3ea", "1cs", "1case", "5box",
+            "10EA", "10CS", "10CASE", "10BOX"
+        ]
+        for case in cases:
+            protected, specs = protect_specs(case)
+            assert len(specs) == 0, f"Attached counting unit {case!r} must not be preserved as spec, got: {specs}"
             assert protected == case
 
 

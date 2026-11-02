@@ -60,6 +60,7 @@ class TestAddressRedaction:
             "123 Main St, Unit 4B",
             "123 Main St, Apt 3A",
             "123 Main St, Austin, TX 78701",
+            "123 Main St Austin TX 78701",
             "123 Main St, Suite 400, Austin, TX 78701",
             "500 Oracle Parkway, Redwood City, CA 94065",
             "100 St. Louis Ave",  # St. Louis is part of street name, ending with Ave
@@ -78,6 +79,7 @@ class TestAddressRedaction:
         "zip_input",
         [
             "Austin, TX 78701",
+            "Austin TX 78701",
             "San Francisco, CA 94103",
             "New York, NY 10001-1234",
             "TX 75001-1234",
@@ -212,6 +214,20 @@ class TestPersonRedaction:
         assert redacted2 == "Cashier: <PERSON> | Check: 1002 | Station: 3"
         assert len(meta2) == 1
         assert meta2[0]["raw"] == "Jane Smith"
+
+    def test_person_name_with_secondary_label_on_same_line(self):
+        """Person names followed by secondary labels like Total: $50 on the same line."""
+        text = "Server: Alice Smith Total: $50"
+        redacted, meta = redact_addresses(text)
+        assert redacted == "Server: <PERSON> Total: $50"
+        assert len(meta) == 1
+        assert meta[0]["raw"] == "Alice Smith"
+
+        text2 = "Cashier: Bob Jones Subtotal: $45.00 Tax: $3.50"
+        redacted2, meta2 = redact_addresses(text2)
+        assert redacted2 == "Cashier: <PERSON> Subtotal: $45.00 Tax: $3.50"
+        assert len(meta2) == 1
+        assert meta2[0]["raw"] == "Bob Jones"
 
 
 class TestNegativeCases:

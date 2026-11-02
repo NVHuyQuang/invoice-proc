@@ -145,6 +145,8 @@ class TestLeakGuardConsecutiveDigits:
         "999999",
         "2026",
         "INV-2026-0831",
+        "12345678-CT",
+        "98765432-PK",
     ])
     def test_detects_consecutive_digits(self, digit_str):
         payload = f"Order reference: {digit_str}"
@@ -158,6 +160,12 @@ class TestLeakGuardConsecutiveDigits:
         "1000 case", # space-separated: quantity + unit, not a spec
         "2000 items",# items not in SPEC_UNITS
         "A4000",     # not a paper size (4 digits)
+        "1000EA",    # counting unit attached to quantity
+        "1000CS",    # counting unit attached to quantity
+        "1000CASE",  # counting unit attached to quantity
+        "1000BOX",   # counting unit attached to quantity
+        "1000 - CASE", # spaced hyphen not a spec
+        "1000 - PACK", # spaced hyphen not a spec
     ])
     def test_unprotected_invalid_specs_with_4_digits_fail(self, invalid_spec):
         payload = f"Line Item: {invalid_spec}"
