@@ -8,18 +8,22 @@ PLAN 6.2:
 
 from pathlib import Path
 import os
+import re
 import tempfile
 from typing import Any
 import openpyxl
 
-DANGEROUS_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+DANGEROUS_PREFIXES = ("=", "+", "-", "@", "\t", chr(13))
+ILLEGAL_XML_CHARACTERS_RE = re.compile(r"[\000-\010]|[\013-\014]|[\016-\037]")
 
 
 def sanitize_excel_cell(value: Any) -> Any:
-    """Sanitize string values to neutralize formula injection payloads.
+    """Sanitize string values to neutralize formula injection payloads and remove invalid XML chars.
 
+    Removes invalid XML control characters that crash openpyxl.
     Prepends a single quote (') to any string value that starts with dangerous
-    formula trigger characters (=, +, -, @, \\t, \\r), including strings with
+    formula trigger characters (=, +, -, @, \\t, \
+), including strings with
     leading whitespace before dangerous characters.
     Non-string values are returned unmodified.
 
@@ -29,10 +33,15 @@ def sanitize_excel_cell(value: Any) -> Any:
     Returns:
         Sanitized value.
     """
-    if isinstance(value, str) and value:
-        if value.startswith(DANGEROUS_PREFIXES) or value.lstrip().startswith(DANGEROUS_PREFIXES):
-            return f"'{value}"
+    if isinstance(value, str):
+        cleaned = ILLEGAL_XML_CHARACTERS_RE.sub("", value)
+        if cleaned:
+            if cleaned.startswith(DANGEROUS_PREFIXES) or cleaned.lstrip().startswith(DANGEROUS_PREFIXES):
+                return f"'{cleaned}"
+        return cleaned
     return value
+
+
 
 
 def save_workbook_atomic(wb: openpyxl.Workbook, target_path: Path) -> None:

@@ -200,3 +200,28 @@ class TestSaveWorkbookAtomic:
         # Only target_path exists in directory, no junk
         files = list(tmp_path.iterdir())
         assert files == [target_path]
+
+    def test_strip_invalid_xml_control_characters(self, tmp_path: Path):
+        """Invalid XML control characters are removed to prevent openpyxl crashes."""
+        raw_text = "Bad\x00Control\x08Chars\x0bAnd\x0cMore\x1fEnd"
+        sanitized = sanitize_excel_cell(raw_text)
+        assert "\x00" not in sanitized
+        assert "\x08" not in sanitized
+        assert "\x0b" not in sanitized
+        assert "\x0c" not in sanitized
+        assert "\x1f" not in sanitized
+        assert sanitized == "BadControlCharsAndMoreEnd"
+
+        # Neutralization still works on formula with illegal XML chars
+        formula_with_junk = "\x01=SUM(A1:B1)\x02"
+        sanitized_formula = sanitize_excel_cell(formula_with_junk)
+        assert sanitized_formula == "'=SUM(A1:B1)"
+
+        # Verify saving with sanitized string succeeds in openpyxl
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws["A1"] = sanitized
+        out = tmp_path / "xml_clean.xlsx"
+        save_workbook_atomic(wb, out)
+        assert out.exists()
+

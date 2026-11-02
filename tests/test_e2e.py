@@ -597,3 +597,109 @@ class TestE2EExportFlow:
         ws_lines = wb["Line Items Detail"]
         line_rows = list(ws_lines.iter_rows(values_only=True))
         assert len(line_rows) > 1, "Line items sheet must contain data rows"
+
+
+# ==============================================================================
+# Phase 7 Evaluation Tests (eval/run_eval.py)
+# ==============================================================================
+
+class TestPhase7Evaluation:
+    """Test evaluation metric calculations in eval/run_eval.py."""
+
+    def test_eval_metrics_perfect_accuracy(self, tmp_path: Path):
+        """When predictions match ground truths perfectly, false-verify rate is 0 and accuracies are 1.0."""
+        from eval.run_eval import run_evaluation
+
+        golden = {
+            "inv1.pdf": {
+                "source_file": "inv1.pdf",
+                "status": "VERIFIED",
+                "vendor_name": "Acme Inc",
+                "invoice_no": "INV-001",
+                "invoice_date": "2026-08-01",
+                "grand_total": "100.00",
+                "subtotal": "90.00",
+                "tax": "10.00",
+                "page_count": 2,
+            }
+        }
+        predictions = [
+            {
+                "source_file": "inv1.pdf",
+                "status": "VERIFIED",
+                "vendor_name": "Acme Inc",
+                "invoice_no": "INV-001",
+                "invoice_date": "2026-08-01",
+                "grand_total": "100.00",
+                "subtotal": "90.00",
+                "tax": "10.00",
+            }
+        ]
+        timing = {"total_duration_sec": 4.0, "total_pages": 2}
+
+        report = run_evaluation(predictions, golden, timing_data=timing)
+
+        assert report.total_files == 1
+        assert report.verified_count == 1
+        assert report.false_verify_count == 0
+        assert report.false_verify_rate == 0.0
+        assert report.field_accuracy["vendor_name"] == 1.0
+        assert report.field_accuracy["grand_total"] == 1.0
+        assert report.seconds_per_page == 2.0
+
+    def test_eval_metrics_detects_false_verify(self):
+        """A VERIFIED prediction with an incorrect field must be counted as false-verify."""
+        from eval.run_eval import run_evaluation
+
+        golden = {
+            "inv1.pdf": {
+                "source_file": "inv1.pdf",
+                "status": "VERIFIED",
+                "vendor_name": "Acme Inc",
+                "invoice_no": "INV-001",
+                "invoice_date": "2026-08-01",
+                "grand_total": "100.00",
+                "page_count": 1,
+            }
+        }
+        # Model hallucinated 150.00 instead of 100.00 but marked as VERIFIED!
+        predictions = [
+            {
+                "source_file": "inv1.pdf",
+                "status": "VERIFIED",
+                "vendor_name": "Acme Inc",
+                "invoice_no": "INV-001",
+                "invoice_date": "2026-08-01",
+                "grand_total": "150.00",
+            }
+        ]
+
+        report = run_evaluation(predictions, golden)
+
+        assert report.verified_count == 1
+        assert report.false_verify_count == 1
+        assert report.false_verify_rate == 1.0
+        assert report.field_accuracy["grand_total"] == 0.0
+
+    def test_eval_cli_run(self, tmp_path: Path):
+        """Test eval/run_eval.py CLI entrypoint."""
+        from eval.run_eval import main as eval_main
+
+        golden_file = tmp_path / "golden.jsonl"
+        pred_file = tmp_path / "pred.jsonl"
+
+        record = {
+            "source_file": "sample.pdf",
+            "status": "VERIFIED",
+            "vendor_name": "Test Co",
+            "invoice_no": "123",
+            "invoice_date": "2026-08-01",
+            "grand_total": "50.00",
+            "page_count": 1,
+        }
+        golden_file.write_text(json.dumps(record) + "\n", encoding="utf-8")
+        pred_file.write_text(json.dumps(record) + "\n", encoding="utf-8")
+
+        ret = eval_main(["--golden", str(golden_file), "--predictions", str(pred_file)])
+        assert ret == 0
+

@@ -12,16 +12,19 @@ Calls excel_safety for formula protection and atomic writes.
 
 from decimal import Decimal
 from pathlib import Path
+import re
 from typing import Any, List, Optional, Tuple, Union
 import openpyxl
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
-from models.schema import CanonicalInvoice, InvoiceStatus
+from models.schema import CanonicalInvoice, InvoiceStatus, DocType
 from exporters.excel_safety import sanitize_excel_cell, save_workbook_atomic
 
 CURRENCY_FORMAT = "#,##0.00"
 QTY_FORMAT = "#,##0.##"
+MONTH_REGEX = re.compile(r"^\d{4}-(?:0[1-9]|1[0-2])$")
+
 
 # Header column definitions matching PLAN 6.2
 OVERVIEW_HEADERS = [
@@ -129,6 +132,18 @@ def _auto_fit_columns(ws) -> None:
         ws.column_dimensions[col_letter].width = max(min(max_len + 3, 50), 12)
 
 
+def _is_duplicate(inv: CanonicalInvoice) -> bool:
+    return (
+        inv.status in (InvoiceStatus.DUPLICATE, "DUPLICATE")
+        or bool(getattr(inv, "is_duplicate", False))
+    )
+
+
+def _is_statement_or_other(inv: CanonicalInvoice) -> bool:
+    doc_val = (inv.doc_type.value if hasattr(inv.doc_type, "value") else str(inv.doc_type or "")).lower()
+    return doc_val in ("statement", "other")
+
+
 def export_excel_summary(
     invoices: List[CanonicalInvoice],
     duplicates: List[Tuple[str, str, str]],
@@ -146,6 +161,9 @@ def export_excel_summary(
     Returns:
         Path to the written .xlsx file.
     """
+    if not isinstance(month, str) or not MONTH_REGEX.match(month):
+        raise ValueError(f"Invalid month format: {month!r}. Expected YYYY-MM (e.g. '2026-08').")
+
     target_dir = Path(output_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
     target_path = target_dir / f"Summary_{month}.xlsx"
@@ -153,16 +171,23 @@ def export_excel_summary(
     wb = openpyxl.Workbook()
 
     # Sheet 1: Invoice Overview
+    # Exclude DUPLICATE, statement, and other from main cost overview
     ws_overview = wb.active if wb.active is not None else wb.create_sheet(title="Invoice Overview")
     ws_overview.title = "Invoice Overview"
     _apply_header_style(ws_overview, OVERVIEW_HEADERS)
 
-    for row_idx, inv in enumerate(invoices, start=2):
+    overview_invoices = [
+        inv for inv in invoices
+        if not _is_duplicate(inv) and not _is_statement_or_other(inv)
+    ]
+
+    for row_idx, inv in enumerate(overview_invoices, start=2):
         cat_val = inv.category.value if hasattr(inv.category, "value") else str(inv.category or "")
         stat_val = inv.status.value if hasattr(inv.status, "value") else str(inv.status or "")
+        bill_no = inv.invoice_no if inv.invoice_no else Path(inv.source_file).name
 
         _write_cell_value(ws_overview, row_idx, 1, inv.invoice_date, align_center=True)
-        _write_cell_value(ws_overview, row_idx, 2, inv.invoice_no)
+        _write_cell_value(ws_overview, row_idx, 2, bill_no)
         _write_cell_value(ws_overview, row_idx, 3, inv.vendor_name)
         _write_cell_value(ws_overview, row_idx, 4, cat_val)
         _write_cell_value(ws_overview, row_idx, 5, inv.subtotal, is_amount=True)
@@ -174,11 +199,15 @@ def export_excel_summary(
     _auto_fit_columns(ws_overview)
 
     # Sheet 2: Line Items Detail
+    # Exclude DUPLICATE invoice line items to avoid double counting
     ws_lines = wb.create_sheet(title="Line Items Detail")
     _apply_header_style(ws_lines, LINE_ITEMS_HEADERS)
 
     line_row_idx = 2
     for inv in invoices:
+        if _is_duplicate(inv):
+            continue
+
         ref = inv.invoice_no if inv.invoice_no else Path(inv.source_file).name
 
         for item in inv.line_items:
@@ -207,28 +236,48 @@ def export_excel_summary(
     _auto_fit_columns(ws_lines)
 
     # Sheet 3: Discrepancy Alerts
+    # Captures REVIEW_NEEDED, FAILED, and excluded statement/other invoices
     ws_alerts = wb.create_sheet(title="Discrepancy Alerts")
     _apply_header_style(ws_alerts, ALERTS_HEADERS)
 
     alert_row_idx = 2
     for inv in invoices:
+        if _is_duplicate(inv):
+            continue
+
+        is_stmt_other = _is_statement_or_other(inv)
         is_review_or_failed = (
             inv.status in (InvoiceStatus.REVIEW_NEEDED, InvoiceStatus.FAILED, "REVIEW_NEEDED", "FAILED")
             or bool(inv.review_reasons)
+            or is_stmt_other
         )
         if not is_review_or_failed:
             continue
 
         stat_val = inv.status.value if hasattr(inv.status, "value") else str(inv.status or "")
-        reasons = inv.review_reasons if inv.review_reasons else [""]
+        bill_no = inv.invoice_no if inv.invoice_no else Path(inv.source_file).name
+        if inv.review_reasons:
+            reasons = inv.review_reasons
+        elif is_stmt_other:
+            doc_val = inv.doc_type.value if hasattr(inv.doc_type, "value") else str(inv.doc_type or "")
+            reasons = [f"Excluded document type: {doc_val}"]
+        else:
+            reasons = [""]
 
         for reason in reasons:
             _write_cell_value(ws_alerts, alert_row_idx, 1, inv.invoice_date, align_center=True)
-            _write_cell_value(ws_alerts, alert_row_idx, 2, inv.invoice_no)
+            _write_cell_value(ws_alerts, alert_row_idx, 2, bill_no)
             _write_cell_value(ws_alerts, alert_row_idx, 3, inv.vendor_name)
             _write_cell_value(ws_alerts, alert_row_idx, 4, stat_val, align_center=True)
             _write_cell_value(ws_alerts, alert_row_idx, 5, reason)
             _write_cell_value(ws_alerts, alert_row_idx, 6, inv.source_file)
+
+            # Add clickable hyperlink for quick inspection of original file
+            if inv.source_file:
+                cell_file = ws_alerts.cell(row=alert_row_idx, column=6)
+                cell_file.hyperlink = str(inv.source_file)
+                cell_file.font = Font(name="Calibri", size=11, color="0563C1", underline="single")
+
             _write_cell_value(ws_alerts, alert_row_idx, 7, "")  # Corrected by
             _write_cell_value(ws_alerts, alert_row_idx, 8, "")  # Note
             alert_row_idx += 1
@@ -236,10 +285,13 @@ def export_excel_summary(
     _auto_fit_columns(ws_alerts)
 
     # Sheet 4: Duplicates
+    # Captures duplicate pairs and any invoice marked as DUPLICATE
     ws_duplicates = wb.create_sheet(title="Duplicates")
     _apply_header_style(ws_duplicates, DUPLICATES_HEADERS)
 
     dup_row_idx = 2
+    seen_dup_sources = set()
+
     for dup in duplicates:
         if isinstance(dup, (tuple, list)):
             source_a = dup[0] if len(dup) > 0 else ""
@@ -258,9 +310,21 @@ def export_excel_summary(
         _write_cell_value(ws_duplicates, dup_row_idx, 2, source_b)
         _write_cell_value(ws_duplicates, dup_row_idx, 3, reason)
         dup_row_idx += 1
+        if source_a:
+            seen_dup_sources.add(source_a)
+
+    for inv in invoices:
+        if _is_duplicate(inv) and inv.source_file not in seen_dup_sources:
+            orig = getattr(inv, "duplicate_of", "") or ""
+            _write_cell_value(ws_duplicates, dup_row_idx, 1, inv.source_file)
+            _write_cell_value(ws_duplicates, dup_row_idx, 2, orig)
+            _write_cell_value(ws_duplicates, dup_row_idx, 3, "Duplicate invoice")
+            dup_row_idx += 1
+            seen_dup_sources.add(inv.source_file)
 
     _auto_fit_columns(ws_duplicates)
 
     # Save atomically
     save_workbook_atomic(wb, target_path)
     return target_path
+

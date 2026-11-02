@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import logging
 from pathlib import Path
+import re
 import sys
 import time
 from typing import List, Optional
@@ -22,12 +23,22 @@ from core.llm_parser import LLMClient
 from core.ocr_engine import OCREngine
 from core.pipeline import process_invoice_file
 from exporters.excel_exporter import export_excel_summary
-from exporters.jsonl_exporter import JSONLExporter
+from exporters.jsonl_exporter import JSONLExporter, rewrite_invoices_atomic
 from models.schema import CanonicalInvoice, InvoiceStatus
 
 logger = logging.getLogger("invoice_processor")
 
 VALID_EXTENSIONS = frozenset({".pdf", ".png", ".jpg", ".jpeg", ".webp", ".heic"})
+MONTH_REGEX = re.compile(r"^\d{4}-(?:0[1-9]|1[0-2])$")
+
+
+def validate_month_arg(value: str) -> str:
+    """Validate month format (YYYY-MM) to prevent path traversal."""
+    if not MONTH_REGEX.match(value):
+        raise argparse.ArgumentTypeError(
+            f"Invalid --month format: {value!r}. Must be YYYY-MM (e.g. '2026-08')."
+        )
+    return value
 
 
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
@@ -43,8 +54,10 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser.add_argument(
         "--month",
         default="2026-08",
+        type=validate_month_arg,
         help="Target processing month (YYYY-MM), default: 2026-08",
     )
+
     parser.add_argument(
         "--out",
         default="output",
@@ -152,6 +165,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     elif args.only:
         logging.basicConfig(level=logging.DEBUG, format="%(asctime)s [%(levelname)s] %(message)s")
         logger.setLevel(logging.DEBUG)
+        logging.getLogger("core.pipeline").setLevel(logging.DEBUG)
+        logging.getLogger().setLevel(logging.DEBUG)
     else:
         logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
@@ -175,14 +190,17 @@ def main(argv: Optional[List[str]] = None) -> int:
     # 1. Dry-run branch: halts after Leak Guard, prints masked payload to stdout, DO NOT call LLM
     if args.dry_run:
         for file_path in files:
-            process_invoice_file(
-                file_path=file_path,
-                llm_client=llm_client,
-                ocr_engine=ocr_engine,
-                cache=None,
-                target_month=args.month,
-                dry_run=True,
-            )
+            try:
+                process_invoice_file(
+                    file_path=file_path,
+                    llm_client=llm_client,
+                    ocr_engine=ocr_engine,
+                    cache=None,
+                    target_month=args.month,
+                    dry_run=True,
+                )
+            except Exception as exc:
+                logger.error("Dry run error on file %s: %s", file_path.name, exc)
         return 0
 
     if not files:
@@ -248,19 +266,26 @@ def main(argv: Optional[List[str]] = None) -> int:
     # 4. Deduplication
     deduped_invoices, duplicates = deduplicate_invoices(collected_invoices)
 
-    # If duplicates were detected, sync invoices.jsonl with final status
+    # If duplicates were detected, sync invoices.jsonl with final status atomically
     if duplicates:
-        with open(jsonl_path, "w", encoding="utf-8") as f:
-            for inv in deduped_invoices:
-                f.write(json.dumps(inv.to_jsonl_dict(), ensure_ascii=False) + "\n")
+        rewrite_invoices_atomic(jsonl_path, deduped_invoices)
 
     # 5. Export Excel 4-sheet summary
-    export_excel_summary(
-        invoices=deduped_invoices,
-        duplicates=duplicates,
-        output_dir=out_dir,
-        month=args.month,
-    )
+    try:
+        export_excel_summary(
+            invoices=deduped_invoices,
+            duplicates=duplicates,
+            output_dir=out_dir,
+            month=args.month,
+        )
+    except PermissionError:
+        perm_warning = (
+            "CẢNH BÁO: Không thể ghi file Excel (PermissionError). "
+            "Vui lòng đóng file Excel đang mở và chạy lại để xuất báo cáo!"
+        )
+        logger.warning(perm_warning)
+        print(f"\n{perm_warning}\n")
+
 
     # 6. Final statistics & summary table
     duration = time.time() - start_time

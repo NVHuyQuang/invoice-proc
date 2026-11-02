@@ -375,3 +375,45 @@ def test_string_paths_and_unicode_handling(tmp_path: Path) -> None:
     assert fail_data["file_path"] == "lỗi_hóa_đơn_01.pdf"
     assert fail_data["error_code"] == "ENCODING_ERROR"
 
+
+def test_rewrite_invoices_atomic_success(tmp_path: Path) -> None:
+    """Verify rewrite_invoices_atomic correctly rewrites JSONL file atomically."""
+    from exporters.jsonl_exporter import rewrite_invoices_atomic
+
+    out_file = tmp_path / "invoices.jsonl"
+    out_file.write_text("old_content\n", encoding="utf-8")
+
+    inv1 = _make_sample_invoice(invoice_no="INV-1", grand_total="100.00")
+    inv2 = _make_sample_invoice(invoice_no="INV-2", grand_total="200.00")
+
+    rewrite_invoices_atomic(out_file, [inv1, inv2])
+
+    lines = out_file.read_text(encoding="utf-8").strip().splitlines()
+    assert len(lines) == 2
+    d1 = json.loads(lines[0])
+    d2 = json.loads(lines[1])
+    assert d1["invoice_no"] == "INV-1"
+    assert d2["invoice_no"] == "INV-2"
+
+
+def test_rewrite_invoices_atomic_failure_preserves_target(tmp_path: Path) -> None:
+    """Verify rewrite_invoices_atomic failure does not corrupt original file."""
+    from exporters.jsonl_exporter import rewrite_invoices_atomic
+
+    out_file = tmp_path / "invoices.jsonl"
+    out_file.write_text("precious_original_content\n", encoding="utf-8")
+
+    class CrashingInvoice:
+        def to_jsonl_dict(self):
+            raise RuntimeError("Boom mid-write")
+
+    with pytest.raises(RuntimeError, match="Boom mid-write"):
+        rewrite_invoices_atomic(out_file, [CrashingInvoice()])
+
+    # Original content must be untouched
+    assert out_file.read_text(encoding="utf-8") == "precious_original_content\n"
+
+    # No leftover temporary files
+    assert list(tmp_path.glob("*.tmp")) == []
+
+

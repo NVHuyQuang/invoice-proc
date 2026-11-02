@@ -19,7 +19,8 @@ from models.schema import (
 from core.llm_parser import LLMClient
 from core.llm_cache import LLMCache
 from core.ocr_engine import OCREngine
-from core.types import Document, Page, Line, Word
+from core.ocr_preprocess import deskew_image, enhance_contrast_clahe
+from core.types import Document, Page, Line, Word, Vault, VaultEntry
 from core.vault import create_vault
 from core.ingestion import compute_file_sha256, detect_file_type, load_image
 from core.ingestion_pdf import load_pdf_document, deduplicate_headers_footers
@@ -33,6 +34,94 @@ from core.rehydrator import verify_llm_tokens, rehydrate_invoice
 from core.validator import assign_invoice_status
 
 logger = logging.getLogger(__name__)
+
+
+STRIP_CHARS = "$€£¥₫(), \t\n" + chr(13)
+
+
+def link_vault_to_words(vault: Vault, words: List[Word]) -> None:
+    """Link Word.bbox, page, conf to VaultEntry objects to preserve original coordinates."""
+    if not words or not vault:
+        return
+
+    sorted_words = sorted(words, key=lambda w: (w.page, w.bbox[1], w.bbox[0]))
+    num_words = len(sorted_words)
+    word_ptr = 0
+
+    for token in list(vault.keys()):
+        entry = vault[token]
+        # Skip if entry already has non-zero bbox
+        if entry.bbox != (0.0, 0.0, 0.0, 0.0):
+            continue
+
+        raw = entry.raw.strip()
+        raw_clean = raw.strip(STRIP_CHARS)
+
+        matched_idx = -1
+
+        # Search forward from current pointer
+        for i in range(word_ptr, num_words):
+            w = sorted_words[i]
+            w_text = w.text.strip()
+            w_clean = w_text.strip(STRIP_CHARS)
+
+            if (
+                raw == w_text
+                or (raw_clean and raw_clean == w_clean)
+                or (raw_clean and raw_clean in w_text)
+                or (w_clean and len(w_clean) >= 2 and w_clean in raw)
+            ):
+                matched_idx = i
+                break
+
+        # Search from beginning if forward search fails
+        if matched_idx == -1:
+            for i in range(0, min(word_ptr, num_words)):
+                w = sorted_words[i]
+                w_text = w.text.strip()
+                w_clean = w_text.strip(STRIP_CHARS)
+
+                if (
+                    raw == w_text
+                    or (raw_clean and raw_clean == w_clean)
+                    or (raw_clean and raw_clean in w_text)
+                    or (w_clean and len(w_clean) >= 2 and w_clean in raw)
+                ):
+                    matched_idx = i
+                    break
+
+
+        if matched_idx != -1:
+            matched_w = sorted_words[matched_idx]
+            word_ptr = matched_idx + 1
+
+            bx0, by0, bx1, by1 = matched_w.bbox
+            m_conf = matched_w.conf
+            m_page = matched_w.page
+
+            # Combine adjacent word bounding boxes if token spans multiple words
+            if matched_idx + 1 < num_words and len(matched_w.text.strip()) < len(raw):
+                next_w = sorted_words[matched_idx + 1]
+                comb = matched_w.text.strip() + next_w.text.strip()
+                if (raw_clean and raw_clean in comb) or (comb in raw):
+                    bx0 = min(bx0, next_w.bbox[0])
+                    by0 = min(by0, next_w.bbox[1])
+                    bx1 = max(bx1, next_w.bbox[2])
+                    by1 = max(by1, next_w.bbox[3])
+                    m_conf = min(m_conf, next_w.conf)
+                    word_ptr = matched_idx + 2
+
+            new_entry = VaultEntry(
+                token=entry.token,
+                raw=entry.raw,
+                kind=entry.kind,
+                page=m_page,
+                bbox=(bx0, by0, bx1, by1),
+                conf=m_conf,
+                neg_hint=entry.neg_hint,
+            )
+            vault.add(new_entry)
+
 
 
 def process_invoice_file(
@@ -117,9 +206,16 @@ def process_invoice_file(
                 try:
                     for page_num, img in ocr_pages:
                         try:
-                            ocr_words = ocr_engine.predict(img, page_num=page_num, raise_on_error=True)
+                            prep_img, _ = deskew_image(img)
+                            prep_img = enhance_contrast_clahe(prep_img)
+                        except Exception as e:
+                            logger.warning("Preprocessing failed for page %s: %s", page_num, e)
+                            prep_img = img
+
+                        try:
+                            ocr_words = ocr_engine.predict(prep_img, page_num=page_num, raise_on_error=True)
                         except TypeError:
-                            ocr_words = ocr_engine.predict(img, page_num=page_num)
+                            ocr_words = ocr_engine.predict(prep_img, page_num=page_num)
                         for p in doc.pages:
                             if p.page_num == page_num:
                                 p.words.extend(ocr_words)
@@ -144,6 +240,14 @@ def process_invoice_file(
                     review_reasons=["file_unreadable"],
                 )
 
+            # Conditional preprocessing (deskew, CLAHE)
+            try:
+                prep_img, _ = deskew_image(img_arr)
+                prep_img = enhance_contrast_clahe(prep_img)
+            except Exception as e:
+                logger.warning("Preprocessing failed for image %s: %s", path.name, e)
+                prep_img = img_arr
+
             if ocr_engine is None:
                 try:
                     ocr_engine = OCREngine()
@@ -157,9 +261,9 @@ def process_invoice_file(
 
             try:
                 try:
-                    ocr_words = ocr_engine.predict(img_arr, page_num=1, raise_on_error=True)
+                    ocr_words = ocr_engine.predict(prep_img, page_num=1, raise_on_error=True)
                 except TypeError:
-                    ocr_words = ocr_engine.predict(img_arr, page_num=1)
+                    ocr_words = ocr_engine.predict(prep_img, page_num=1)
             except Exception:
                 return CanonicalInvoice(
                     source_file=str(path),
@@ -201,6 +305,8 @@ def process_invoice_file(
                 review_reasons=["file_unreadable"],
             )
 
+        logger.debug("[Pipeline Step 1: Ingestion] %s (ftype=%s, pages=%d)", path.name, ftype, len(doc.pages))
+
         # 2. Layout
         if not doc.pages:
             return CanonicalInvoice(
@@ -218,15 +324,21 @@ def process_invoice_file(
             all_lines.extend(lines)
 
         formatted_text = format_lines_as_text(all_lines)
+        logger.debug("[Pipeline Step 2: Layout] Reconstructed %d lines from %d words", len(all_lines), len(doc.all_words))
 
         # 3. Redactor
         redacted_text, _ = redact_text(formatted_text)
+        logger.debug("[Pipeline Step 3: Redactor] Redacted formatted text (%d chars)", len(redacted_text))
 
         # 4. Tokenizer
         masked_text, vault = tokenize_text(redacted_text, vault=vault)
+        # Link original Word.bbox, page, conf to VaultEntry
+        link_vault_to_words(vault, doc.all_words)
+        logger.debug("[Pipeline Step 4: Tokenizer] Generated %d vault entries with provenance", len(vault))
 
         # 5. Leak Guard
         is_valid, _ = verify_payload(masked_text)
+        logger.debug("[Pipeline Step 5: Leak Guard] Payload valid: %s", is_valid)
         if not is_valid:
             return CanonicalInvoice(
                 source_file=str(path),
@@ -254,6 +366,7 @@ def process_invoice_file(
             if cached_res is not None:
                 try:
                     llm_invoice = LLMInvoice.model_validate_json(cached_res)
+                    logger.debug("[Pipeline Step 6: LLM/Cache] Cache hit for %s", path.name)
                 except Exception:
                     llm_invoice = None
 
@@ -261,6 +374,7 @@ def process_invoice_file(
             prompt = build_system_prompt()
             try:
                 llm_invoice = llm_client.parse_invoice(prompt, masked_text)
+                logger.debug("[Pipeline Step 6: LLM/Cache] LLM extraction completed for %s", path.name)
             except Exception:
                 return CanonicalInvoice(
                     source_file=str(path),
@@ -269,7 +383,10 @@ def process_invoice_file(
                     review_reasons=["llm_error"],
                 )
             if cache is not None:
-                cache.put(cache_key, llm_invoice.model_dump_json())
+                try:
+                    cache.put(cache_key, llm_invoice.model_dump_json())
+                except Exception as exc:
+                    logger.warning("Failed to store cache for %s: %s", path.name, exc)
 
         # 8. Rehydrate
         try:
@@ -280,6 +397,7 @@ def process_invoice_file(
                 source_file=str(path),
                 source_sha256=sha256,
             )
+            logger.debug("[Pipeline Step 7: Rehydrate] Rehydrated invoice successfully")
         except Exception:
             return CanonicalInvoice(
                 source_file=str(path),
@@ -294,7 +412,9 @@ def process_invoice_file(
             rehydrator_flags=canonical_invoice.review_reasons,
             target_month=target_month,
         )
+        logger.debug("[Pipeline Step 8: Validator] Final status: %s", final_invoice.status)
         return final_invoice
+
 
     finally:
         vault.clear()

@@ -25,6 +25,7 @@ import pymupdf
 from PIL import Image
 
 from config import Category
+import core.ocr_preprocess
 from core.llm_cache import LLMCache
 from core.llm_parser import LLMClient
 from core.ocr_engine import OCREngine
@@ -462,3 +463,95 @@ class TestPipelineTargetMonth:
 
         assert invoice.status == InvoiceStatus.REVIEW_NEEDED
         assert any("target month" in r.lower() or "outside target" in r.lower() for r in invoice.review_reasons)
+
+
+# ==============================================================================
+# 8. Reliability, Thread Safety, Provenance & Preprocessing (Wave 3 Group E)
+# ==============================================================================
+
+
+class TestPipelineWave3GroupEReliability:
+    """Tests for Wave 3 Group E improvements."""
+
+    def test_ocr_engine_has_lock_and_thread_safe(self):
+        """OCREngine must have threading.Lock protecting initialize() and predict()."""
+        import threading
+        import numpy as np
+
+        engine = OCREngine(mock=True)
+        assert hasattr(engine, "_lock")
+        assert isinstance(engine._lock, type(threading.Lock()))
+
+        # Concurrent initialize calls
+        threads = [threading.Thread(target=engine.initialize) for _ in range(5)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert engine._engine is not None
+
+        # Concurrent predict calls
+        dummy_img = np.zeros((100, 100, 3), dtype=np.uint8)
+        results = []
+
+        def worker():
+            words = engine.predict(dummy_img, page_num=1)
+            results.append(words)
+
+        threads = [threading.Thread(target=worker) for _ in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert len(results) == 8
+
+    def test_pipeline_cache_put_exception_does_not_fail_invoice(
+        self, synthetic_clean_pdf: Path, mock_llm_client: MagicMock
+    ):
+        """cache.put failure must be swallowed so the invoice is not failed."""
+        cache = LLMCache(cache_dir="cache")
+        with patch.object(cache, "put", side_effect=RuntimeError("Disk full")):
+            invoice = process_invoice_file(
+                file_path=synthetic_clean_pdf,
+                llm_client=mock_llm_client,
+                cache=cache,
+                target_month="2026-08",
+            )
+            # Should still be VERIFIED despite cache.put failure
+            assert invoice.status == InvoiceStatus.VERIFIED
+            assert invoice.grand_total == Decimal("55.00")
+
+    def test_pipeline_preserves_word_provenance_coordinates(
+        self, synthetic_clean_pdf: Path, mock_llm_client: MagicMock
+    ):
+        """Pipeline must link Word.bbox, page, conf to VaultEntry and Provenance."""
+        invoice = process_invoice_file(
+            file_path=synthetic_clean_pdf,
+            llm_client=mock_llm_client,
+            target_month="2026-08",
+        )
+        assert invoice.status == InvoiceStatus.VERIFIED
+        # Coordinates must not be all 0.0
+        assert invoice.grand_total_prov is not None
+        assert invoice.grand_total_prov.page == 1
+        x0, y0, x1, y1 = invoice.grand_total_prov.bbox
+        assert not (x0 == 0.0 and y0 == 0.0 and x1 == 0.0 and y1 == 0.0)
+
+    def test_pipeline_conditional_ocr_preprocessing_called(
+        self, synthetic_image_file: Path, mock_llm_client: MagicMock
+    ):
+        """Preprocessing (deskew, CLAHE) must be conditionally executed before OCR."""
+        with patch("core.pipeline.deskew_image", wraps=core.ocr_preprocess.deskew_image) as spy_deskew, \
+             patch("core.pipeline.enhance_contrast_clahe", wraps=core.ocr_preprocess.enhance_contrast_clahe) as spy_clahe:
+            mock_ocr = OCREngine(mock=True)
+            invoice = process_invoice_file(
+                file_path=synthetic_image_file,
+                llm_client=mock_llm_client,
+                ocr_engine=mock_ocr,
+                target_month="2026-08",
+            )
+            assert spy_deskew.called
+            assert spy_clahe.called
+
