@@ -45,20 +45,23 @@ TOKEN_PATTERN = re.compile(
 # Invisible / zero-width characters and unusual whitespace used in evasion attacks
 INVISIBLE_CHARS = re.compile(r"[\u2000-\u200f\ufeff\u202a-\u202e\u202f\u205f\u2060\u3000\u00a0]")
 
+DISALLOWED_ATTACHED_UNITS = frozenset({"EA", "CS", "CASE", "BOX"})
+
 # Specifications from config.py and PLAN 3.4
 _units_pattern = "|".join(sorted([re.escape(u) for u in SPEC_UNITS], key=len, reverse=True))
+_attached_units_pattern = "|".join(sorted([re.escape(u) for u in SPEC_UNITS if u.upper() not in DISALLOWED_ATTACHED_UNITS], key=len, reverse=True))
 
-# 1. Connected: digits immediately followed by unit (no space), e.g. 750ML, 5LB, 12OZ, 500G, 1000ML
-SPEC_CONNECTED = re.compile(rf"\b\d+(?:\.\d+)?(?:{_units_pattern})\b", re.IGNORECASE)
+# 1. Connected: digits immediately followed by unit (no space), e.g. 750ML, 5LB, 12OZ, 500G, 1000ML (max 4 digits, excluding EA, CS, CASE, BOX)
+SPEC_CONNECTED = re.compile(rf"\b\d{{1,4}}(?:\.\d{{1,3}})?(?:{_attached_units_pattern})\b", re.IGNORECASE)
 
 # Paper sizes: A0 to A9
 SPEC_PAPER = re.compile(r"\bA\d\b", re.IGNORECASE)
 
-# 2. Hyphenated: digits-unit, e.g. 12-PACK, 6-CT, 10-INCH, 1000-CT
-SPEC_HYPHEN = re.compile(rf"\b\d+(?:\.\d+)?-(?:{_units_pattern})\b", re.IGNORECASE)
+# 2. Hyphenated: digits-unit, e.g. 12-PACK, 6-CT, 10-INCH, 1000-CT (max 4 digits, tightly bound)
+SPEC_HYPHEN = re.compile(rf"\b\d{{1,4}}(?:\.\d{{1,3}})?-(?:{_units_pattern})\b", re.IGNORECASE)
 
-# 3. Multiplier / division: NxM unit, N/M unit, e.g. 6X32 OZ, 12x1 L, 24/12 OZ, 4x1000 ML
-SPEC_MULT = re.compile(rf"\b\d+\s*[xX/]\s*\d+(?:\.\d+)?\s*(?:{_units_pattern})\b", re.IGNORECASE)
+# 3. Multiplier / division: NxM unit, N/M unit, e.g. 6X32 OZ, 12x1 L, 24/12 OZ, 4x1000 ML (max 4 digits)
+SPEC_MULT = re.compile(rf"\b\d{{1,4}}(?:\.\d{{1,3}})?\s*[xX/]\s*\d{{1,4}}(?:\.\d{{1,3}})?\s*(?:{_units_pattern})\b", re.IGNORECASE)
 
 # Money / currency patterns (PLAN 3.3, 3.5)
 # Catches $33.99, 33.99, 1,234.56, 1.234,56, (12.50), 12.50-, 12.50 CR, -12.50, 33.99T, @ 3.50, etc.

@@ -8,6 +8,7 @@ Orchestrates sequential masking pipeline:
 Populates the in-memory Vault.
 """
 
+import unicodedata
 from typing import Tuple, List, Optional
 from core.types import Vault
 from core.tokenizer_specs import protect_specs, unprotect_specs
@@ -36,6 +37,11 @@ def tokenize_text(
     """
     if vault is None:
         vault = Vault()
+
+    if text is None:
+        return "", vault
+
+    text = unicodedata.normalize("NFKC", text)
 
     # Step 1: Protect specifications
     protected_text, specs = protect_specs(text)

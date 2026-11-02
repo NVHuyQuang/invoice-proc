@@ -446,3 +446,79 @@ def test_vault_metadata_and_clear():
 
     vault.clear()
     assert len(vault) == 0
+
+
+def test_negative_spaced_leading_minus():
+    vault = Vault()
+    text = "Adjustments: - 12.50 and - $33.99 and -5.00"
+    masked, tokens = tokenize_numbers(text, vault)
+
+    assert masked == "Adjustments: <N_1:neg> and <N_2:neg> and <N_3:neg>"
+    assert tokens == ["<N_1:neg>", "<N_2:neg>", "<N_3:neg>"]
+    assert vault["<N_1:neg>"].raw == "- 12.50"
+    assert vault["<N_1:neg>"].neg_hint is True
+    assert vault["<N_2:neg>"].raw == "- $33.99"
+    assert vault["<N_2:neg>"].neg_hint is True
+    assert vault["<N_3:neg>"].raw == "-5.00"
+    assert vault["<N_3:neg>"].neg_hint is True
+
+
+def test_negative_spaced_trailing_minus():
+    vault = Vault()
+    text = "Line items: 12.50 - and $33.99 - and 1,234.56 -"
+    masked, tokens = tokenize_numbers(text, vault)
+
+    assert masked == "Line items: <N_1:neg> and <N_2:neg> and <N_3:neg>"
+    assert tokens == ["<N_1:neg>", "<N_2:neg>", "<N_3:neg>"]
+    assert vault["<N_1:neg>"].raw == "12.50 -"
+    assert vault["<N_1:neg>"].neg_hint is True
+    assert vault["<N_2:neg>"].raw == "$33.99 -"
+    assert vault["<N_2:neg>"].neg_hint is True
+    assert vault["<N_3:neg>"].raw == "1,234.56 -"
+    assert vault["<N_3:neg>"].neg_hint is True
+
+
+def test_dr_credit_flag():
+    vault = Vault()
+    text = "Balance: 12.50 DR and 12.50DR and $100.00 DR and 50.00 dr"
+    masked, tokens = tokenize_numbers(text, vault)
+
+    assert masked == "Balance: <N_1:neg> and <N_2:neg> and <N_3:neg> and <N_4:neg>"
+    assert tokens == ["<N_1:neg>", "<N_2:neg>", "<N_3:neg>", "<N_4:neg>"]
+    assert vault["<N_1:neg>"].raw == "12.50 DR"
+    assert vault["<N_1:neg>"].neg_hint is True
+    assert vault["<N_1:neg>"].kind == "money"
+    assert vault["<N_2:neg>"].raw == "12.50DR"
+    assert vault["<N_2:neg>"].neg_hint is True
+    assert vault["<N_3:neg>"].raw == "$100.00 DR"
+    assert vault["<N_3:neg>"].neg_hint is True
+    assert vault["<N_4:neg>"].raw == "50.00 dr"
+    assert vault["<N_4:neg>"].neg_hint is True
+
+
+def test_tax_flags_extended():
+    vault = Vault()
+    text = "Taxable items: 33.99F, 12.50N, 10.00E, 25.00 F, 15.00 N"
+    masked, tokens = tokenize_numbers(text, vault)
+
+    assert masked == "Taxable items: <N_1>, <N_2>, <N_3>, <N_4>, <N_5>"
+    assert tokens == ["<N_1>", "<N_2>", "<N_3>", "<N_4>", "<N_5>"]
+    assert vault["<N_1>"].raw == "33.99F"
+    assert vault["<N_1>"].kind == "number"
+    assert vault["<N_2>"].raw == "12.50N"
+    assert vault["<N_3>"].raw == "10.00E"
+    assert vault["<N_4>"].raw == "25.00 F"
+    assert vault["<N_5>"].raw == "15.00 N"
+    assert all("ID" not in t for t in tokens)
+
+
+def test_tokenize_text_unicode_nfkc():
+    from core.tokenizer import tokenize_text
+    vault = Vault()
+    text = "Items: 10² units, 1½ lb butter, price $12.50"
+    masked, v = tokenize_text(text, vault=vault)
+
+    # 10² becomes 102 under NFKC, 1½ becomes 1 1⁄2 or 11/2 under NFKC
+    assert "²" not in masked
+    assert "½" not in masked
+    assert len(v) >= 3

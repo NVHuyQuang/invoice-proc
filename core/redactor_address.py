@@ -40,7 +40,7 @@ US_STATES = (
 # City, State, Zip attached part
 CITY_STATE_ZIP_PART = (
     rf"(?:,\s*|{HSPACE})"
-    rf"(?:[A-Z][a-zA-Z.-]+(?:{HSPACE}[A-Z][a-zA-Z.-]+){{0,3}},\s*)?{US_STATES}{HSPACE}\d{{5}}(?:-\d{{4}})?"
+    rf"(?:[A-Z][a-zA-Z.-]+(?:{HSPACE}[A-Z][a-zA-Z.-]+){{0,3}}(?:,\s*|{HSPACE}))?{US_STATES}{HSPACE}\d{{5}}(?:-\d{{4}})?"
 )
 
 # Full street address line/clause
@@ -51,7 +51,7 @@ STREET_ADDR_REGEX = re.compile(
     rf"(?:{HSPACE}{DIRECTIONAL}\.?)?"
     rf"(?:{SUITE_PART})?"
     rf"(?:{CITY_STATE_ZIP_PART})?"
-    rf"(?=$|[,\r\n;|]|\s{{2,}}|\s+(?=\||$|\r|\n|\d+\.\d{{2}}))",
+    r"(?=$|[,\r\n;|]|\s{2,}|\s+(?=\||$|\r|\n|\d+\.\d{2}))",
     re.IGNORECASE,
 )
 
@@ -63,7 +63,7 @@ PO_BOX_REGEX = re.compile(
 
 # Standalone City, State, Zip or State, Zip
 CITY_STATE_ZIP_STANDALONE = re.compile(
-    rf"\b(?:[A-Z][a-zA-Z.-]+(?:{HSPACE}[A-Z][a-zA-Z.-]+){{0,3}},\s*)?{US_STATES}{HSPACE}\d{{5}}(?:-\d{{4}})?\b"
+    rf"\b(?:[A-Z][a-zA-Z.-]+(?:{HSPACE}[A-Z][a-zA-Z.-]+){{0,3}}(?:,\s*|{HSPACE}))?{US_STATES}{HSPACE}\d{{5}}(?:-\d{{4}})?\b"
 )
 
 # Standalone Suite / Floor / Unit
@@ -91,8 +91,13 @@ LABEL_PATTERN = (
     r")\b\s*[:#-]?\s*(?:#?\d+\s+)?"
 )
 
+KNOWN_SECONDARY_LABELS = (
+    r"Table|Tbl|Check|Chk|Order|Terminal|Term|Station|Date|Time|Guests?|Shift|Balance|"
+    r"Total|Subtotal|Amount|Tax|Tip|Card|Cash|Payment"
+)
+
 TERMINATORS = (
-    r"(?=\s*(?:$|[\r\n,|;]|\s{2,}|\s+(?:Table|Tbl|Check|Chk|Order|Terminal|Term|Station|Date|Time|Guests?|Shift|Balance)\b))"
+    rf"(?=\s*(?:$|[\r\n,|;]|\s{{2,}}|\s+(?:{KNOWN_SECONDARY_LABELS})\b|\s+[A-Za-z]+:))"
 )
 
 NAME_PATTERN = r"[A-Za-z][A-Za-z\'. -]*[A-Za-z.]|[A-Za-z]"

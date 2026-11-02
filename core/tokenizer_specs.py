@@ -27,6 +27,9 @@ def _index_to_alpha(n: int) -> str:
     return "".join(reversed(result))
 
 
+DISALLOWED_ATTACHED_UNITS = frozenset({"EA", "CS", "CASE", "BOX"})
+
+
 @lru_cache(maxsize=16)
 def _compile_spec_patterns(units_tuple: Tuple[str, ...]):
     """Compile regular expressions for specification matching based on SPEC_UNITS."""
@@ -40,21 +43,31 @@ def _compile_spec_patterns(units_tuple: Tuple[str, ...]):
 
     unit_regex = "|".join(unit_patterns)
 
+    # Attached format disallows counting units: EA, CS, CASE, BOX
+    att_units = [u for u in units_sorted if u.upper() not in DISALLOWED_ATTACHED_UNITS]
+    att_patterns = []
+    for u in att_units:
+        if u == "FL OZ":
+            att_patterns.append(r"(?:FL\s+OZ|FL-OZ|FLOZ)")
+        else:
+            att_patterns.append(re.escape(u))
+    att_unit_regex = "|".join(att_patterns)
+
     # 1. Multiplier / Division format: 6X32 OZ, 12x1 L, 24/12 OZ, 6X32OZ, 6x32-OZ, 10x12x14 INCH
     mult_re = re.compile(
-        rf"(?<![A-Za-z0-9])(?P<val>\d+(?:\.\d+)?(?:\s*[xX*/]\s*\d+(?:\.\d+)?)+)\s*[-]?\s*(?P<unit>{unit_regex})\b",
+        rf"(?<![A-Za-z0-9])(?P<val>\d{{1,4}}(?:\.\d{{1,3}})?(?:\s*[xX*/]\s*\d{{1,4}}(?:\.\d{{1,3}})?)+)\s*[-]?\s*(?P<unit>{unit_regex})\b",
         re.IGNORECASE
     )
 
-    # 2. Hyphenated format: 12-PACK, 6-CT, 10-INCH
+    # 2. Hyphenated format: 12-PACK, 6-CT, 10-INCH (max 4 digits, tightly bound)
     hyph_re = re.compile(
-        rf"(?<![A-Za-z0-9])(?P<val>\d+(?:\.\d+)?)\s*-\s*(?P<unit>{unit_regex})\b",
+        rf"(?<![A-Za-z0-9])(?P<val>\d{{1,4}}(?:\.\d{{1,3}})?)-(?P<unit>{unit_regex})\b",
         re.IGNORECASE
     )
 
     # 3. Attached format: 750ML, 5LB, 12OZ, 500G, 1.5L, 2.5KG, 12FLOZ, 12FL OZ
     att_re = re.compile(
-        rf"(?<![A-Za-z0-9])(?P<val>\d+(?:\.\d+)?)(?P<unit>FL\s+OZ|FL-OZ|FLOZ|{unit_regex})\b",
+        rf"(?<![A-Za-z0-9])(?P<val>\d{{1,4}}(?:\.\d{{1,3}})?)(?P<unit>FL\s+OZ|FL-OZ|FLOZ|{att_unit_regex})\b",
         re.IGNORECASE
     )
 
