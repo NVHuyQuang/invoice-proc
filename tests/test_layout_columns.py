@@ -42,6 +42,22 @@ class TestNumericTokenDetection:
         assert is_numeric_token("") is False
         assert is_numeric_token("   ") is False
 
+    def test_numeric_token_wave3_extensions(self):
+        """Tax flags (33.99T), units (1.25 lb), calculations (2 @ 3.50)."""
+        # Tax flags
+        assert is_numeric_token("33.99T") is True
+        assert is_numeric_token("10.50TX") is True
+        assert is_numeric_token("5.00 T") is True
+        # Units
+        assert is_numeric_token("1.25 lb") is True
+        assert is_numeric_token("2.50kg") is True
+        assert is_numeric_token("10 oz") is True
+        assert is_numeric_token("500 g") is True
+        # Calculations
+        assert is_numeric_token("2 @ 3.50") is True
+        assert is_numeric_token("3 @ $1.50") is True
+
+
 
 class TestMultiColumnTable:
     """Test detection and assignment for multi-column tables (bảng nhiều cột)."""
@@ -186,6 +202,39 @@ class TestMultiColumnTable:
 
         text = format_lines_as_text(result)
         assert "Fresh Organic Fuji Apples | 4 | 2.50" in text
+
+    def test_organic_fuji_apples_with_wider_spacing_not_split(self):
+        """Words in 'ORGANIC FUJI APPLES' with normal spacing must stay in column 0, not split into separate columns."""
+        lines = [
+            Line(
+                page=1,
+                y=100.0,
+                cells=[
+                    ("Description", (50, 95, 150, 115), 1.0, 0),
+                    ("Total", (380, 95, 420, 115), 1.0, 0),
+                ],
+            ),
+            Line(
+                page=1,
+                y=120.0,
+                cells=[
+                    ("ORGANIC", (50, 115, 110, 135), 1.0, 0),
+                    ("FUJI", (125, 115, 160, 135), 1.0, 0),
+                    ("APPLES", (175, 115, 230, 135), 1.0, 0),
+                    ("33.99T", (380, 115, 430, 135), 1.0, 0),
+                ],
+            ),
+        ]
+        result = assign_columns(lines, page_width=600.0)
+        # All three words ORGANIC, FUJI, APPLES must have col_idx=0
+        for cell in result[1].cells[:3]:
+            assert cell[3] == 0, f"Cell {cell[0]} was assigned col {cell[3]}, expected 0"
+        assert result[1].cells[3][3] == 1  # 33.99T should be col 1
+
+        text = format_lines_as_text(result)
+        lines_out = text.split("\n")
+        assert "ORGANIC FUJI APPLES | 33.99T" == lines_out[1]
+
 
 
 class TestTwoParallelColumns:

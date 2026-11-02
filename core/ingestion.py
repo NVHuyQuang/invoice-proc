@@ -143,8 +143,12 @@ def load_image(file_path: Path, max_dimension: Optional[int] = None) -> Tuple[np
             # BẮT BUỘC ImageOps.exif_transpose ngay sau khi mở
             img = ImageOps.exif_transpose(raw_img)
 
-            # Chuyển về RGB
-            if img.mode != "RGB":
+            # Chuyển về RGB: nếu có alpha channel (RGBA/LA), composite lên nền trắng trước khi chuyển
+            if "A" in img.getbands() or img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+                rgba = img.convert("RGBA")
+                bg = Image.new("RGBA", rgba.size, (255, 255, 255, 255))
+                img = Image.alpha_composite(bg, rgba).convert("RGB")
+            elif img.mode != "RGB":
                 img = img.convert("RGB")
 
             # Giới hạn cạnh dài tối đa (MAX_IMAGE_DIMENSION), trả về hệ số scale_factor

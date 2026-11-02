@@ -322,3 +322,36 @@ class TestLoadImage:
         missing = tmp_path / "does_not_exist.jpg"
         with pytest.raises(FileNotFoundError):
             load_image(missing)
+
+    def test_load_rgba_image_composite_on_white_background(self, tmp_path: Path) -> None:
+        """Transparent background with black text must composite over white, not turn black."""
+        img_path = tmp_path / "transparent_black_text.png"
+        # 100x100 transparent image (alpha=0, rgb=0,0,0)
+        img = Image.new("RGBA", (100, 100), color=(0, 0, 0, 0))
+        # Draw black text / patch (alpha=255, rgb=0,0,0) in center (40..60, 40..60)
+        for x in range(40, 60):
+            for y in range(40, 60):
+                img.putpixel((x, y), (0, 0, 0, 255))
+        img.save(img_path, format="PNG")
+
+        arr, scale = load_image(img_path)
+        # Background pixel (0, 0) should be white (255, 255, 255), NOT black (0, 0, 0)
+        assert tuple(arr[0, 0]) == (255, 255, 255)
+        # Center text pixel (50, 50) should remain black (0, 0, 0)
+        assert tuple(arr[50, 50]) == (0, 0, 0)
+
+    def test_load_la_image_composite_on_white_background(self, tmp_path: Path) -> None:
+        """LA mode image (grayscale + alpha) must also composite over white."""
+        img_path = tmp_path / "transparent_la.png"
+        # 100x100 LA image: luminance=0, alpha=0
+        img = Image.new("LA", (100, 100), color=(0, 0))
+        # Center has opaque black: luminance=0, alpha=255
+        for x in range(40, 60):
+            for y in range(40, 60):
+                img.putpixel((x, y), (0, 255))
+        img.save(img_path, format="PNG")
+
+        arr, scale = load_image(img_path)
+        assert tuple(arr[0, 0]) == (255, 255, 255)
+        assert tuple(arr[50, 50]) == (0, 0, 0)
+

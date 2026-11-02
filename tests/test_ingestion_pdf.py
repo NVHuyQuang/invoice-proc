@@ -423,3 +423,58 @@ def test_document_duck_typing(tmp_path: Path):
     assert len(list(parsed_doc)) == 1  # type: ignore[call-overload]
     assert len(parsed_doc.pages) == 1
     assert len(parsed_doc.all_words) > 0
+
+
+# =====================================================================
+# Wave 3 PDF Ingestion Bug Fix Tests
+# =====================================================================
+
+def test_deduplicate_headers_footers_default_edge_ratio():
+    """Default edge_ratio <= 0.08 ensures line items near margins (e.g. at 12% height) are preserved."""
+    # Height 1000. Header at y=30 (3%). Item row at y=120 (12%).
+    p1 = Page(page_num=1, width=600, height=1000, words=[
+        Word("Vendor Header", (50, 25, 200, 35), 1.0, 1, "pdf_text"),
+        Word("Item At 12 Percent", (50, 115, 200, 125), 1.0, 1, "pdf_text"),
+    ])
+    p2 = Page(page_num=2, width=600, height=1000, words=[
+        Word("Vendor Header", (50, 25, 200, 35), 1.0, 2, "pdf_text"),
+        Word("Item At 12 Percent", (50, 115, 200, 125), 1.0, 2, "pdf_text"),
+    ])
+    cleaned = deduplicate_headers_footers([p1, p2])
+    p2_texts = [w.text for w in cleaned[1].words]
+    # Header stripped from page 2
+    assert "Vendor Header" not in p2_texts
+    # Item row at 12% MUST NOT be stripped!
+    assert "Item At 12 Percent" in p2_texts
+
+
+def test_background_image_ratio_rotated_90():
+    """Background image area ratio on page rotated 90 or 270 degrees must correctly reflect image area."""
+    from core.ingestion_pdf import compute_background_image_ratio
+
+    doc = fitz.open()
+    page = doc.new_page(width=595, height=842)
+    # Insert image filling entire page
+    img_bytes = fitz.Pixmap(fitz.csRGB, fitz.IRect(0, 0, 595, 842), 0).tobytes("png")
+    page.insert_image(fitz.Rect(0, 0, 595, 842), stream=img_bytes)
+    page.set_rotation(90)
+
+    ratio = compute_background_image_ratio(page)
+    # Must be 1.0 (covers 100% of the page), not distorted ~0.70
+    assert ratio >= 0.99
+    doc.close()
+
+
+def test_convert_ocr_bbox_to_pdf_points():
+    """300 DPI OCR bounding box is converted to 72 DPI PDF points."""
+    from core.ingestion_pdf import convert_ocr_bbox_to_pdf_points
+
+    # 300 DPI box: (300, 300, 600, 600) -> 1 inch to 2 inches
+    # At 72 DPI (PDF points): 72 to 144
+    ocr_bbox = (300.0, 300.0, 600.0, 600.0)
+    pdf_bbox = convert_ocr_bbox_to_pdf_points(ocr_bbox, dpi=300)
+    assert pdf_bbox[0] == pytest.approx(72.0)
+    assert pdf_bbox[1] == pytest.approx(72.0)
+    assert pdf_bbox[2] == pytest.approx(144.0)
+    assert pdf_bbox[3] == pytest.approx(144.0)
+

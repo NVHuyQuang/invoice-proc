@@ -17,7 +17,7 @@ import re
 import string
 import unicodedata
 from pathlib import Path
-from typing import List, Tuple, Union, Any, Set
+from typing import List, Tuple, Union, Any, Set, Optional
 import numpy as np
 import pymupdf as fitz
 from rapidfuzz import fuzz
@@ -83,11 +83,17 @@ def compute_background_image_ratio(page_obj: Any) -> float:
     if not image_infos:
         return 0.0
 
+    rotation = getattr(page_obj, "rotation", 0)
+    rot_matrix = getattr(page_obj, "rotation_matrix", None)
+
     max_area = 0.0
     for info in image_infos:
         bbox = info.get("bbox")
         if bbox:
-            img_rect = fitz.Rect(bbox) & page_rect
+            r = fitz.Rect(bbox)
+            if rotation != 0 and rot_matrix is not None:
+                r = r * rot_matrix
+            img_rect = r & page_rect
             area = max(0.0, float(img_rect.width)) * max(0.0, float(img_rect.height))
             if area > max_area:
                 max_area = area
@@ -212,7 +218,7 @@ def _normalize_line_text(line: List[Word]) -> Tuple[str, str]:
 
 def deduplicate_headers_footers(
     pages: List[Page],
-    edge_ratio: float = 0.20,
+    edge_ratio: float = 0.08,
     threshold: float = float(DEDUP_SIMILARITY_THRESHOLD),
 ) -> List[Page]:
     """Strip repeated headers/footers (e.g. 'Page X of Y', repeated vendor banner) across multi-page docs.
@@ -347,3 +353,58 @@ def load_pdf_document(file_path: Union[str, Path]) -> Tuple[Document, List[Tuple
     cleaned_pages = deduplicate_headers_footers(pages)
     doc = Document(file_path=str(path), sha256=sha256, pages=cleaned_pages)
     return (doc, ocr_pages)
+
+
+def convert_ocr_bbox_to_pdf_points(
+    bbox: Tuple[float, float, float, float],
+    dpi: int = PDF_RENDER_DPI,
+    scale: Optional[float] = None,
+) -> Tuple[float, float, float, float]:
+    """Convert bounding box coordinates from OCR render DPI (e.g. 300 DPI) to PDF points (72 DPI).
+
+    Args:
+        bbox: Bounding box tuple (x0, y0, x1, y1) in rendered image pixels.
+        dpi: DPI used when rendering the page (default PDF_RENDER_DPI = 300).
+        scale: Optional explicit scale factor override.
+
+    Returns:
+        Bounding box tuple (x0, y0, x1, y1) in 72 DPI PDF point coordinates.
+    """
+    factor = 72.0 / dpi if scale is None else 1.0 / scale
+    return (
+        float(bbox[0] * factor),
+        float(bbox[1] * factor),
+        float(bbox[2] * factor),
+        float(bbox[3] * factor),
+    )
+
+
+def convert_ocr_words_to_pdf_points(
+    words: List[Word],
+    dpi: int = PDF_RENDER_DPI,
+    scale: Optional[float] = None,
+) -> List[Word]:
+    """Rescale a list of OCR Word objects from render DPI to PDF points (72 DPI).
+
+    Args:
+        words: List of Word instances with bbox in render coordinates.
+        dpi: Render DPI.
+        scale: Optional explicit scale override.
+
+    Returns:
+        New list of Word instances with bboxes converted to PDF points.
+    """
+    return [
+        Word(
+            text=w.text,
+            bbox=convert_ocr_bbox_to_pdf_points(w.bbox, dpi=dpi, scale=scale),
+            conf=float(w.conf),
+            page=int(w.page),
+            source=str(w.source),
+        )
+        for w in words
+    ]
+
+
+scale_ocr_words_to_pdf_points = convert_ocr_words_to_pdf_points
+

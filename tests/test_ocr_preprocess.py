@@ -316,3 +316,73 @@ class TestSliceLongReceipt:
         assert slice_long_receipt(np.zeros((0, 0), dtype=np.uint8)) == []
         assert slice_long_receipt(np.zeros((100, 0), dtype=np.uint8)) == []
         assert slice_long_receipt(np.zeros((0, 100), dtype=np.uint8)) == []
+
+
+# ============================================================================
+# 4. Wave 3 Bug Fixes & Slicing Stitching Tests
+# ============================================================================
+
+
+class TestWave3PreprocessFixes:
+    """Tests for Wave 3 preprocess fixes: HoughLinesP unpack, minAreaRect skew, CLAHE threshold, stitching."""
+
+    def test_hough_lines_unpack_handles_various_formats(self, monkeypatch):
+        """HoughLinesP returning 1D or 2D arrays does not crash with unpack error."""
+        from core.ocr_preprocess import _estimate_skew_angle
+
+        fake_lines = [
+            (10, 20, 100, 20),
+            (15, 30, 105, 30),
+            (20, 40, 110, 40),
+        ]
+
+        def mock_hough(*args, **kwargs):
+            return fake_lines
+
+        monkeypatch.setattr(cv2, "HoughLinesP", mock_hough)
+        gray = np.full((200, 200), 255, dtype=np.uint8)
+        # Should execute without tuple unpack error
+        angle = _estimate_skew_angle(gray)
+        assert isinstance(angle, float)
+
+    def test_clahe_skipped_on_sharp_black_and_white_receipt(self):
+        """Sharp black-on-white receipt must NOT be modified by default CLAHE threshold."""
+        sharp_receipt = _create_synthetic_receipt(skew_angle=0.0)
+        res = enhance_contrast_clahe(sharp_receipt)
+        assert np.array_equal(res, sharp_receipt)
+
+    def test_stitch_slice_results_deduplication(self):
+        """Stitching slices removes duplicate words in overlap region and offsets Y coordinates."""
+        from core.types import Word
+        from core.ocr_preprocess import stitch_slice_results
+
+        slice1_words = [
+            Word("HEADER", (30.0, 50.0, 120.0, 70.0), 0.95, 1, "ocr"),
+            Word("ITEM1", (30.0, 120.0, 100.0, 140.0), 0.90, 1, "ocr"),
+            Word("OVERLAP_WORD", (30.0, 280.0, 150.0, 300.0), 0.88, 1, "ocr"),
+        ]
+        slice2_words = [
+            # In slice 2 (y_offset=250), relative y=30 -> global y=280 (duplicate of OVERLAP_WORD)
+            Word("OVERLAP_WORD", (30.0, 30.0, 150.0, 50.0), 0.92, 1, "ocr"),
+            Word("ITEM2", (30.0, 100.0, 100.0, 120.0), 0.91, 1, "ocr"),
+            Word("TOTAL", (30.0, 200.0, 90.0, 220.0), 0.97, 1, "ocr"),
+        ]
+
+        slices = [
+            (slice1_words, 0),
+            (slice2_words, 250),
+        ]
+
+        stitched = stitch_slice_results(slices)
+        texts = [w.text for w in stitched]
+        assert texts.count("OVERLAP_WORD") == 1
+        assert "HEADER" in texts
+        assert "ITEM1" in texts
+        assert "ITEM2" in texts
+        assert "TOTAL" in texts
+
+        # Verify global Y coordinates
+        total_word = [w for w in stitched if w.text == "TOTAL"][0]
+        assert total_word.bbox[1] == 450.0  # 200 + 250
+        assert total_word.bbox[3] == 470.0  # 220 + 250
+

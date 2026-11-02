@@ -7,9 +7,31 @@ PLAN 2.2: Conditional image enhancement before OCR:
   OCR each segment, stitch results, and remove duplicates in overlap region.
 """
 
-from typing import Tuple, List, Union
+from typing import Tuple, List, Union, Optional
 import cv2
 import numpy as np
+
+from core.types import Word
+
+
+def _normalize_min_area_rect_angle(rect: Tuple[Tuple[float, float], Tuple[float, float], float]) -> float:
+    """Normalize minAreaRect angle to standard skew angle in [-45, 45].
+
+    Standard OpenCV skew logic:
+    if w < h: angle = -(90 + angle) (OpenCV < 4.5 angle in [-90, 0)) or angle - 90 (OpenCV >= 4.5).
+    """
+    (_, (w, h), angle) = rect
+    if angle < 0:
+        if w < h:
+            angle = -(90.0 + angle)
+        else:
+            angle = -angle
+    else:
+        if w < h:
+            angle = angle - 90.0
+        else:
+            angle = angle
+    return float(angle)
 
 
 def _estimate_skew_angle(gray: np.ndarray) -> float:
@@ -39,15 +61,17 @@ def _estimate_skew_angle(gray: np.ndarray) -> float:
     hough_angles = []
     if lines is not None:
         for line in lines:
-            x1, y1, x2, y2 = line[0]
-            if x2 != x1:
-                ang = np.degrees(np.arctan2(y2 - y1, x2 - x1))
-                while ang <= -90.0:
-                    ang += 180.0
-                while ang > 90.0:
-                    ang -= 180.0
-                if abs(ang) <= 45.0:
-                    hough_angles.append(ang)
+            flat = np.asarray(line).ravel()
+            if len(flat) >= 4:
+                x1, y1, x2, y2 = flat[:4]
+                if x2 != x1:
+                    ang = np.degrees(np.arctan2(y2 - y1, x2 - x1))
+                    while ang <= -90.0:
+                        ang += 180.0
+                    while ang > 90.0:
+                        ang -= 180.0
+                    if abs(ang) <= 45.0:
+                        hough_angles.append(ang)
 
     if len(hough_angles) >= 3:
         return float(np.median(hough_angles))
@@ -66,8 +90,7 @@ def _estimate_skew_angle(gray: np.ndarray) -> float:
     for c in contours:
         if cv2.contourArea(c) >= 50:
             rect = cv2.minAreaRect(c)
-            ang = rect[2]
-            h_ang = ang if ang <= 45.0 else ang - 90.0
+            h_ang = _normalize_min_area_rect_angle(rect)
             if abs(h_ang) <= 45.0:
                 rect_angles.append(h_ang)
 
@@ -78,12 +101,12 @@ def _estimate_skew_angle(gray: np.ndarray) -> float:
     pts = cv2.findNonZero(thresh)
     if pts is not None and len(pts) > 20:
         rect = cv2.minAreaRect(pts)
-        ang = rect[2]
-        h_ang = ang if ang <= 45.0 else ang - 90.0
+        h_ang = _normalize_min_area_rect_angle(rect)
         if abs(h_ang) <= 45.0:
             return float(h_ang)
 
     return 0.0
+
 
 
 def deskew_image(img: np.ndarray) -> Tuple[np.ndarray, float]:
@@ -128,12 +151,12 @@ def deskew_image(img: np.ndarray) -> Tuple[np.ndarray, float]:
     return deskewed, detected_angle
 
 
-def enhance_contrast_clahe(img: np.ndarray, std_threshold: float = 40.0) -> np.ndarray:
+def enhance_contrast_clahe(img: np.ndarray, std_threshold: float = 20.0) -> np.ndarray:
     """Conditionally apply CLAHE if image contrast (grayscale standard deviation) is below threshold.
 
     Args:
         img: Input image.
-        std_threshold: Grayscale standard deviation threshold.
+        std_threshold: Grayscale standard deviation threshold (default 20.0 to avoid noise on sharp black/white text).
 
     Returns:
         Enhanced image (or original image if contrast is sufficient).
@@ -198,3 +221,98 @@ def slice_long_receipt(
         y += step
 
     return chunks
+
+
+def stitch_slice_results(
+    slice_results: Union[List[Tuple[List[Word], int]], List[List[Word]]],
+    y_offsets: Optional[List[int]] = None,
+    iou_threshold: float = 0.3,
+) -> List[Word]:
+    """Stitch OCR word results from sliced receipt chunks and remove duplicates in overlap regions.
+
+    Args:
+        slice_results: List of (words, y_offset) tuples, or list of word lists if y_offsets is provided.
+        y_offsets: Optional list of y-offsets corresponding to each slice.
+        iou_threshold: Intersection-over-union threshold for word duplicate detection.
+
+    Returns:
+        List of merged, deduplicated Word objects with global document coordinates.
+    """
+    if not slice_results:
+        return []
+
+    normalized: List[Tuple[List[Word], int]] = []
+    if y_offsets is not None:
+        for words, offset in zip(slice_results, y_offsets):
+            normalized.append((words, int(offset)))
+    else:
+        for item in slice_results:
+            if isinstance(item, tuple) and len(item) == 2 and isinstance(item[1], (int, float)):
+                normalized.append((item[0], int(item[1])))
+            elif isinstance(item, list):
+                normalized.append((item, 0))
+
+    global_words: List[Word] = []
+    for words, offset in normalized:
+        for w in words:
+            gw = Word(
+                text=w.text,
+                bbox=(float(w.bbox[0]), float(w.bbox[1] + offset), float(w.bbox[2]), float(w.bbox[3] + offset)),
+                conf=float(w.conf),
+                page=int(w.page),
+                source=str(w.source),
+            )
+            global_words.append(gw)
+
+    if not global_words:
+        return []
+
+    def _iou(b1: Tuple[float, float, float, float], b2: Tuple[float, float, float, float]) -> float:
+        ix0 = max(b1[0], b2[0])
+        iy0 = max(b1[1], b2[1])
+        ix1 = min(b1[2], b2[2])
+        iy1 = min(b1[3], b2[3])
+        inter = max(0.0, ix1 - ix0) * max(0.0, iy1 - iy0)
+        a1 = max(0.0, b1[2] - b1[0]) * max(0.0, b1[3] - b1[1])
+        a2 = max(0.0, b2[2] - b2[0]) * max(0.0, b2[3] - b2[1])
+        union = a1 + a2 - inter
+        return inter / union if union > 0 else 0.0
+
+    global_words.sort(key=lambda w: (w.page, (w.bbox[1] + w.bbox[3]) / 2.0, w.bbox[0]))
+
+    deduped: List[Word] = []
+    for w in global_words:
+        is_dup = False
+        w_text_norm = w.text.strip().lower()
+        w_yc = (w.bbox[1] + w.bbox[3]) / 2.0
+        w_h = max(1.0, w.bbox[3] - w.bbox[1])
+
+        for idx, existing in enumerate(deduped):
+            if existing.page != w.page:
+                continue
+            e_text_norm = existing.text.strip().lower()
+            e_yc = (existing.bbox[1] + existing.bbox[3]) / 2.0
+            e_h = max(1.0, existing.bbox[3] - existing.bbox[1])
+
+            text_match = (w_text_norm == e_text_norm)
+            iou = _iou(w.bbox, existing.bbox)
+            y_close = abs(w_yc - e_yc) < 0.6 * max(w_h, e_h)
+            x_overlap = max(0.0, min(w.bbox[2], existing.bbox[2]) - max(w.bbox[0], existing.bbox[0])) > 0.3 * min(
+                w.bbox[2] - w.bbox[0], existing.bbox[2] - existing.bbox[0]
+            )
+
+            if text_match and (iou >= iou_threshold or (y_close and x_overlap)):
+                is_dup = True
+                if w.conf > existing.conf:
+                    deduped[idx] = w
+                break
+
+        if not is_dup:
+            deduped.append(w)
+
+    deduped.sort(key=lambda w: (w.page, (w.bbox[1] + w.bbox[3]) / 2.0, w.bbox[0]))
+    return deduped
+
+
+stitch_receipt_slices = stitch_slice_results
+
