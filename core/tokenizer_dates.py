@@ -78,15 +78,15 @@ P_MONTH_YEAR = re.compile(
 LOOKAHEAD_NUMERIC = r"(?![A-Za-z0-9_]|[-/]\w|\.\d)"
 
 P_NUM_ISO = re.compile(
-    rf"(?<![A-Za-z0-9_/\-\.\$€£¥₫])(?P<y>\d{{4}})(?P<sep>[-/.])(?P<m>\d{{1,2}})(?P=sep)(?P<d>\d{{1,2}}){LOOKAHEAD_NUMERIC}"
+    rf"(?<![A-Za-z0-9_/\-\.\$€£¥₫])(?P<y>\d{{4}})\s*(?P<sep>[-/.])\s*(?P<m>\d{{1,2}})\s*(?P=sep)\s*(?P<d>\d{{1,2}}){LOOKAHEAD_NUMERIC}"
 )
 
 P_NUM_4Y = re.compile(
-    rf"(?<![A-Za-z0-9_/\-\.\$€£¥₫])(?P<p1>\d{{1,2}})(?P<sep>[-/.])(?P<p2>\d{{1,2}})(?P=sep)(?P<y>\d{{4}}){LOOKAHEAD_NUMERIC}"
+    rf"(?<![A-Za-z0-9_/\-\.\$€£¥₫])(?P<p1>\d{{1,2}})\s*(?P<sep>[-/.])\s*(?P<p2>\d{{1,2}})\s*(?P=sep)\s*(?P<y>\d{{4}}){LOOKAHEAD_NUMERIC}"
 )
 
 P_NUM_2Y = re.compile(
-    rf"(?<![A-Za-z0-9_/\-\.\$€£¥₫])(?P<p1>\d{{1,2}})(?P<sep>[-/.])(?P<p2>\d{{1,2}})(?P=sep)(?P<y>\d{{2}}){LOOKAHEAD_NUMERIC}"
+    rf"(?<![A-Za-z0-9_/\-\.\$€£¥₫])(?P<p1>\d{{1,2}})\s*(?P<sep>[-/.])\s*(?P<p2>\d{{1,2}})\s*(?P=sep)\s*(?P<y>\d{{2}}){LOOKAHEAD_NUMERIC}"
 )
 
 

@@ -42,8 +42,8 @@ TOKEN_PATTERN = re.compile(
     r"<(?:N_\d+(?::[a-zA-Z]{2,10})?|D_\d+|ID_\d+|(?:ADDR|PHONE|EMAIL|URL|CARD|PERSON|BARCODE)(?:_\d+)?(?::[a-zA-Z]{2,10})?)>"
 )
 
-# Invisible / zero-width characters used in evasion attacks
-INVISIBLE_CHARS = re.compile(r"[\u200b-\u200f\ufeff\u202a-\u202e]")
+# Invisible / zero-width characters and unusual whitespace used in evasion attacks
+INVISIBLE_CHARS = re.compile(r"[\u2000-\u200f\ufeff\u202a-\u202e\u202f\u205f\u2060\u3000\u00a0]")
 
 # Specifications from config.py and PLAN 3.4
 _units_pattern = "|".join(sorted([re.escape(u) for u in SPEC_UNITS], key=len, reverse=True))
@@ -169,7 +169,9 @@ def _scan_line(line: str, line_no: int) -> List[Tuple[str, int]]:
     no_phone = PHONE_PATTERN.sub("[PHONE]", no_card)
 
     # Step 6: Check Raw Money
-    if MONEY_PATTERN.search(token_masked):
+    condensed_digits = re.sub(r"(?<=\d)\s+(?=\d|[.,])", "", token_masked)
+    condensed_digits = re.sub(r"(?<=[.,])\s+(?=\d)", "", condensed_digits)
+    if MONEY_PATTERN.search(token_masked) or MONEY_PATTERN.search(condensed_digits):
         if RULE_RAW_MONEY not in seen_rules:
             detected.append((RULE_RAW_MONEY, line_no))
             seen_rules.add(RULE_RAW_MONEY)
@@ -181,7 +183,8 @@ def _scan_line(line: str, line_no: int) -> List[Tuple[str, int]]:
     spec_masked = SPEC_CONNECTED.sub("[SPEC]", spec_masked)
     spec_masked = SPEC_PAPER.sub("[SPEC]", spec_masked)
 
-    if CONSECUTIVE_DIGITS_PATTERN.search(spec_masked):
+    condensed_specs = re.sub(r"(?<=\d)\s+(?=\d)", "", spec_masked)
+    if CONSECUTIVE_DIGITS_PATTERN.search(spec_masked) or CONSECUTIVE_DIGITS_PATTERN.search(condensed_specs):
         if RULE_CONSECUTIVE_DIGITS not in seen_rules:
             detected.append((RULE_CONSECUTIVE_DIGITS, line_no))
             seen_rules.add(RULE_CONSECUTIVE_DIGITS)

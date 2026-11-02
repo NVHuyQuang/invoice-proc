@@ -68,6 +68,15 @@ def parse_number(
     if not s:
         raise ValueError("Empty numeric string")
 
+    # Count adversarial / multiple negative indicators
+    neg_ind_count = 0
+    if re.search(r'\(.*\)', s):
+        neg_ind_count += 1
+    neg_ind_count += len(re.findall(r'[-−–—]', s))
+    neg_ind_count += len(_CREDIT_PATTERN.findall(s))
+    if neg_ind_count > 1:
+        raise ValueError("Invalid negative format: multiple negative indicators")
+
     # Invariant: neg_hint forces negative sign
     is_negative = bool(neg_hint)
 
@@ -149,6 +158,8 @@ def parse_number(
 
         if last_dot > last_comma:
             # US format: 1,234.56 or 1,234,567.89
+            if document_locale == "EU_VN":
+                raise ValueError("US number format conflicts with EU_VN document locale")
             int_part = s[:last_dot]
             dec_part = s[last_dot + 1:]
             parts = int_part.split(',')
@@ -159,6 +170,8 @@ def parse_number(
             val = Decimal(int_part.replace(',', '') + '.' + dec_part)
         else:
             # EU/VN format: 1.234,56 or 1.234.567,89
+            if document_locale == "US":
+                raise ValueError("EU_VN number format conflicts with US document locale")
             int_part = s[:last_comma]
             dec_part = s[last_comma + 1:]
             parts = int_part.split('.')
@@ -209,9 +222,15 @@ def parse_number(
             if not left.isdigit() or not right.isdigit():
                 raise ValueError("Invalid numeric format")
 
-            if len(right) == 3 and (1 <= len(left) <= 3) and document_locale == "EU_VN":
-                # In EU/VN, dot with 3 digits is thousands separator (1.234 -> 1234)
-                val = Decimal(left + right)
+            if len(right) == 3 and (1 <= len(left) <= 3):
+                if document_locale == "EU_VN":
+                    # In EU/VN, dot with 3 digits is thousands separator (1.234 -> 1234)
+                    val = Decimal(left + right)
+                elif document_locale == "US":
+                    # Decimal separator (US default)
+                    val = Decimal(left + '.' + right)
+                else:
+                    raise AmbiguousNumberError("Ambiguous numeric format without locale context")
             else:
                 # Decimal separator (US default)
                 val = Decimal(left + '.' + right)
