@@ -162,7 +162,9 @@ def verify_llm_tokens(llm_invoice: LLMInvoice, vault: Vault) -> Tuple[bool, List
 
     # 2. Check token existence in vault
     has_unknown = False
-    for _, val, _ in _iter_all_refs(llm_invoice):
+    for path, val, _ in _iter_all_refs(llm_invoice):
+        if path.startswith("unassigned"):
+            continue
         if val:
             val_str = val.strip()
             if val_str and _resolve_vault_entry(vault, val_str) is None:
@@ -365,7 +367,7 @@ def _parse_date(raw: str, default_locale: str = DEFAULT_DATE_LOCALE) -> Tuple[Op
                     return (None, True)
 
     # 2. ISO format YYYY-MM-DD or YYYY/MM/DD
-    iso_match = re.match(r"^(\d{4})[-/\.](\d{1,2})[-/\.](\d{1,2})$", s)
+    iso_match = re.match(r"^(\d{4})\s*[-/\.]\s*(\d{1,2})\s*[-/\.]\s*(\d{1,2})$", s)
     if iso_match:
         y = int(iso_match.group(1))
         m = int(iso_match.group(2))
@@ -377,7 +379,7 @@ def _parse_date(raw: str, default_locale: str = DEFAULT_DATE_LOCALE) -> Tuple[Op
             return (None, True)
 
     # 3. Numeric 3-component: MM/DD/YYYY or DD/MM/YYYY
-    num_match = re.match(r"^(\d{1,2})[-/\.](\d{1,2})[-/\.](\d{2,4})$", s)
+    num_match = re.match(r"^(\d{1,2})\s*[-/\.]\s*(\d{1,2})\s*[-/\.]\s*(\d{2,4})$", s)
     if num_match:
         a = int(num_match.group(1))
         b = int(num_match.group(2))

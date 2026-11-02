@@ -267,6 +267,8 @@ def build_system_prompt() -> str:
         "- Bạn chỉ được tham chiếu token theo đúng tên định danh (ví dụ: <N_k>, <D_k>, <ID_k>, <N_k:neg>).\n"
         "- Tuyệt đối KHÔNG viết ra bất kỳ con số thật nào, không suy luận giá trị số học.\n"
         "- Mỗi token số chỉ được sử dụng tối đa một lần trong các trường số.\n"
+        "- grand_total_ref: Tham chiếu token tổng tiền thanh toán của hóa đơn (thường ở mục TOTAL, TOTAL INVOICE hoặc AMOUNT DUE). Chú ý: Khi có nhãn TOTAL INVOICE, token tổng tiền thường nằm ở cuối dòng phía dưới hoặc cuối bảng tóm tắt. Tuyệt đối không chọn token đếm số lượng kiện hàng (như sau nhãn Total Cases, Total Items, Total Btls).\n"
+        "- unassigned: Danh sách các token xuất hiện trong văn bản mà chưa được gán vào trường nào. Phải giữ nguyên tiền tố chính xác (<ID_k>, <D_k>, <N_k>), không được đổi tiền tố và không tự tạo token mới.\n"
         "- Nếu không chắc chắn vai trò của một token, hãy gán null cho trường đó và thêm token vào danh sách unassigned.\n"
         "- Mọi trường có hậu tố _ref chỉ nhận chuỗi token hoặc null.\n\n"
         "PHÂN LOẠI CHI PHÍ (category):\n"

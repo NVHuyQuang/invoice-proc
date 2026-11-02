@@ -123,6 +123,15 @@ def load_api_key(
     return ""
 
 
+def _clean_json_markdown(text: str) -> str:
+    """Strip markdown code fence blocks (```json ... ``` or ``` ... ```) if present."""
+    text = text.strip()
+    match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, flags=re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    return text
+
+
 def _format_validation_error(err: Exception) -> str:
     """Extract clean schema validation error information without any data/payload values."""
     if isinstance(err, ValidationError):
@@ -271,7 +280,7 @@ class LLMClient:
             raw_content = self._call_with_network_retries(messages)
 
             try:
-                return LLMInvoice.model_validate_json(raw_content)
+                return LLMInvoice.model_validate_json(_clean_json_markdown(raw_content))
             except (ValidationError, json.JSONDecodeError, ValueError) as val_err:
                 logger.warning(
                     "Structural error in LLM response: %s. Retrying once with error feedback.",
@@ -292,7 +301,7 @@ class LLMClient:
 
                 retry_raw_content = self._call_with_network_retries(retry_messages)
                 try:
-                    return LLMInvoice.model_validate_json(retry_raw_content)
+                    return LLMInvoice.model_validate_json(_clean_json_markdown(retry_raw_content))
                 except Exception as second_err:
                     logger.error(
                         "LLM output validation failed again on retry: %s",

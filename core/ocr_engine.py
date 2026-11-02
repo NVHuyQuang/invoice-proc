@@ -90,7 +90,7 @@ class OCREngine:
 
     _shared_backends: Dict[str, Any] = {}
     _instances: Dict[str, "OCREngine"] = {}
-    _class_lock: threading.Lock = threading.Lock()
+    _class_lock: threading.RLock = threading.RLock()
 
     def __init__(
         self,
@@ -112,7 +112,7 @@ class OCREngine:
         self.use_shared_engine = use_shared_engine
         self.mock = mock
         self.errors: List[Dict[str, Any]] = []
-        self._lock: threading.Lock = threading.Lock()
+        self._lock = threading.Lock()
 
         if self.mock and self._engine is None:
             self._engine = MockPaddleOCR()
@@ -158,6 +158,7 @@ class OCREngine:
                 try:
                     backend = PaddleOCR(
                         lang=self.lang,
+                        enable_mkldnn=False,
                         use_doc_orientation_classify=True,
                         use_doc_unwarping=False,
                         use_textline_orientation=True,

@@ -338,13 +338,14 @@ Credit memo; PDF nhiều hóa đơn; PDF scan có text layer rác; hóa đơn d�
 | exporters | formula injection, Decimal, atomic write |
 | pipeline | cô lập lỗi theo file, resume bằng cache |
 
-## Rủi ro còn lại (ghi nhận, không phải lỗi)
-- Tier B (tên vendor và tên hàng) vẫn đến Google. Nếu không chấp nhận, phương án: chạy LLM cục bộ (Ollama) cho phần ngữ nghĩa; chất lượng thấp hơn, cần đo lại bằng golden set.
-- PII redaction là heuristic, có thể sót địa chỉ lạ. Leak Guard chặn các mẫu chắc chắn; phần sót nằm ở mức chấp nhận hoặc cần bước review `--dry-run`.
-- Số quy cách giữ nguyên (3.4) vẫn xuất hiện trong payload.
-- OCR giấy nhiệt mờ có thể đọc sai số mà phép tính vô tình vẫn khớp (hiếm); giảm bằng cờ confidence và lấy mẫu VERIFIED.
-- Proxy local là điểm lỗi duy nhất; có retry và cache, chưa có fallback.
-- Bản kế hoạch và kết quả do AI tạo, cần người xem lại trước khi dùng cho quyết định tài chính hoặc đưa ra ngoài.
+## Rủi ro còn lại (ghi nhận thực tế sau build)
+- **Tier B ra ngoài máy:** Tên nhà cung cấp và tên mặt hàng vẫn được gửi tới LLM qua proxy. Nếu chính sách PDPD yêu cầu tuyệt đối 100% nội bộ, giải pháp thay thế là chạy LLM cục bộ (Ollama/vLLM) cho phần ngữ nghĩa.
+- **Môi trường PaddlePaddle trên Windows:** Phiên bản PaddlePaddle 3.3.1 CPU trên Windows có thể xuất hiện lỗi oneDNN khi xử lý một số mảng tensor nếu thiếu GPU hoặc trình biên dịch ccache. Hệ thống đã cách ly lỗi này an toàn qua `OCREngine` (ghi nhận vào error list, không làm chết batch), nhưng khi triển khai chính thức cho khối lượng hóa đơn scan lớn, khuyến nghị môi trường có GPU CUDA hoặc container Linux.
+- **PII redaction là heuristic:** Địa chỉ quốc tế hoặc định dạng tên đường dị biệt có thể không khớp mẫu regex; Leak Guard là chốt chặn cuối cùng ngăn chặn các mẫu số tiền và chuỗi số dài.
+- **Số quy cách (Specifications):** Đã được khống chế chặt chẽ tối đa 4 chữ số (`\d{1,4}`) và loại trừ các đơn vị đếm `EA`, `CS`, `CASE`, `BOX` khỏi dạng dính liền để tránh lọt số tài khoản hay số lượng giao dịch.
+- **Proxy local là điểm lỗi duy nhất:** Đã có cơ chế retry 3 lần với exponential backoff và disk-backed cache nguyên tử, nhưng chưa có failover sang proxy phụ.
+- **Giấy nhiệt nhăn hoặc biến dạng phi tuyến:** Xoay affine của tiền xử lý chỉ nắn thẳng góc nghiêng tuyến tính; hóa đơn nhăn/mờ nặng sẽ được cờ OCR confidence (`< 0.90`) tự động chuyển sang diện `REVIEW_NEEDED`.
+- **Thẩm định con người bắt buộc:** Toàn bộ kết quả và báo cáo do AI xử lý; kế toán viên phải duyệt toàn bộ danh sách `REVIEW_NEEDED` và lấy mẫu ngẫu nhiên 5-10% danh sách `VERIFIED` trước khi hạch toán.
 
 ## Thứ tự thực hiện đề xuất
 1. 0.1, 0.2, 0.4 (môi trường, .gitignore, golden set) song song với checklist pháp lý.

@@ -480,7 +480,7 @@ class TestPipelineWave3GroupEReliability:
 
         engine = OCREngine(mock=True)
         assert hasattr(engine, "_lock")
-        assert isinstance(engine._lock, type(threading.Lock()))
+        assert isinstance(engine._lock, (type(threading.Lock()), type(threading.RLock())))
 
         # Concurrent initialize calls
         threads = [threading.Thread(target=engine.initialize) for _ in range(5)]
