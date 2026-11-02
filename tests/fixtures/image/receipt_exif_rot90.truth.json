@@ -1,0 +1,46 @@
+{
+  "source_file": "receipt_exif_rot90.jpg",
+  "vendor_name": "METRO RESTAURANT DEPOT",
+  "invoice_no": "MRD-8841-2026",
+  "invoice_date": "2026-08-10",
+  "due_date": null,
+  "currency": "USD",
+  "category": "Nguyên vật liệu thực phẩm",
+  "status": "VERIFIED",
+  "doc_type": "receipt",
+  "line_items": [
+    {
+      "item_name": "ALL PURPOSE FLOUR 25LB",
+      "qty": "2",
+      "unit_price": "16.50",
+      "line_total": "33.00",
+      "unit": "LB",
+      "kind": "goods"
+    },
+    {
+      "item_name": "CANE SUGAR 10LB",
+      "qty": "3",
+      "unit_price": "8.20",
+      "line_total": "24.60",
+      "unit": "LB",
+      "kind": "goods"
+    },
+    {
+      "item_name": "UNSALTED BUTTER 1LB",
+      "qty": "10",
+      "unit_price": "4.10",
+      "line_total": "41.00",
+      "unit": "LB",
+      "kind": "goods"
+    }
+  ],
+  "charges": [],
+  "subtotal": "98.60",
+  "tax": "0.00",
+  "discount": "0.00",
+  "shipping": null,
+  "tip": null,
+  "fees": [],
+  "grand_total": "98.60",
+  "amount_due": "98.60"
+}

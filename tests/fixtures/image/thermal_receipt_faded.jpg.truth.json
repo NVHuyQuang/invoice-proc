@@ -1,0 +1,54 @@
+{
+  "source_file": "thermal_receipt_faded.jpg",
+  "vendor_name": "CORNER BISTRO & SUPPLIES",
+  "invoice_no": "CBS-2026-9012",
+  "invoice_date": "2026-08-18",
+  "due_date": null,
+  "currency": "USD",
+  "category": "Nguyên vật liệu thực phẩm",
+  "status": "VERIFIED",
+  "doc_type": "receipt",
+  "line_items": [
+    {
+      "item_name": "EXTRA VIRGIN OLIVE OIL 1L",
+      "qty": "2",
+      "unit_price": "18.50",
+      "line_total": "37.00",
+      "unit": "L",
+      "kind": "goods"
+    },
+    {
+      "item_name": "BALSAMIC VINEGAR 500ML",
+      "qty": "1",
+      "unit_price": "9.75",
+      "line_total": "9.75",
+      "unit": "ML",
+      "kind": "goods"
+    },
+    {
+      "item_name": "SEA SALT COARSE 1KG",
+      "qty": "4",
+      "unit_price": "3.25",
+      "line_total": "13.00",
+      "unit": "KG",
+      "kind": "goods"
+    },
+    {
+      "item_name": "BLACK PEPPERCORNS 8OZ",
+      "qty": "2",
+      "unit_price": "6.50",
+      "line_total": "13.00",
+      "unit": "OZ",
+      "kind": "goods"
+    }
+  ],
+  "charges": [],
+  "subtotal": "72.75",
+  "tax": "5.82",
+  "discount": "0.00",
+  "shipping": null,
+  "tip": null,
+  "fees": [],
+  "grand_total": "78.57",
+  "amount_due": "78.57"
+}

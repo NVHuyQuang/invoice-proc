@@ -1,0 +1,46 @@
+{
+  "source_file": "receipt_exif_rot180.jpg",
+  "vendor_name": "PACIFIC CLEANING & PACKAGING",
+  "invoice_no": "PCP-4019-AUG26",
+  "invoice_date": "2026-08-22",
+  "due_date": null,
+  "currency": "USD",
+  "category": "Bao bì/vật dụng",
+  "status": "VERIFIED",
+  "doc_type": "receipt",
+  "line_items": [
+    {
+      "item_name": "TAKEOUT CONTAINER 9X9 150CT",
+      "qty": "2",
+      "unit_price": "32.00",
+      "line_total": "64.00",
+      "unit": "CT",
+      "kind": "goods"
+    },
+    {
+      "item_name": "BIODEGRADABLE FORKS 500CT",
+      "qty": "1",
+      "unit_price": "18.50",
+      "line_total": "18.50",
+      "unit": "CT",
+      "kind": "goods"
+    },
+    {
+      "item_name": "CLEAR DRINK CUPS 16OZ 1000CT",
+      "qty": "1",
+      "unit_price": "45.00",
+      "line_total": "45.00",
+      "unit": "CT",
+      "kind": "goods"
+    }
+  ],
+  "charges": [],
+  "subtotal": "127.50",
+  "tax": "10.20",
+  "discount": "0.00",
+  "shipping": null,
+  "tip": null,
+  "fees": [],
+  "grand_total": "137.70",
+  "amount_due": "137.70"
+}

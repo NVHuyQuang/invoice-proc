@@ -1,0 +1,46 @@
+{
+  "source_file": "receipt_iphone_exif.heic",
+  "vendor_name": "HARBOR VIEW PROVISIONS",
+  "invoice_no": "HVP-2026-0829",
+  "invoice_date": "2026-08-29",
+  "due_date": null,
+  "currency": "USD",
+  "category": "Nguyên vật liệu thực phẩm",
+  "status": "VERIFIED",
+  "doc_type": "receipt",
+  "line_items": [
+    {
+      "item_name": "WILD SALMON FILLET 5LB",
+      "qty": "2",
+      "unit_price": "48.00",
+      "line_total": "96.00",
+      "unit": "LB",
+      "kind": "goods"
+    },
+    {
+      "item_name": "GULF SHRIMP 16/20 5LB",
+      "qty": "1",
+      "unit_price": "55.00",
+      "line_total": "55.00",
+      "unit": "LB",
+      "kind": "goods"
+    },
+    {
+      "item_name": "LEMONS FRESH 1 CS",
+      "qty": "1",
+      "unit_price": "24.50",
+      "line_total": "24.50",
+      "unit": "CS",
+      "kind": "goods"
+    }
+  ],
+  "charges": [],
+  "subtotal": "175.50",
+  "tax": "0.00",
+  "discount": "0.00",
+  "shipping": null,
+  "tip": null,
+  "fees": [],
+  "grand_total": "175.50",
+  "amount_due": "175.50"
+}
