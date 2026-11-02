@@ -45,6 +45,8 @@ def _make_invoice(**kwargs) -> CanonicalInvoice:
         "source_sha256": "abcdef1234567890",
         "status": InvoiceStatus.REVIEW_NEEDED,
         "doc_type": DocType.GOODS_INVOICE,
+        "invoice_no": "INV-1001",
+        "invoice_date": "2026-08-01",
     }
     defaults.update(kwargs)
     return CanonicalInvoice(**defaults)
@@ -149,15 +151,47 @@ def test_tier3_multiple_tax_lines_with_matching_summary_tax():
     assert errors == []
 
 
-def test_tier3_multiple_tax_lines_additive_summary_tax():
-    # Invoice where summary tax is in addition to tax line
+def test_tier3_tax_conflict_disallows_additive_summary_tax():
+    # Tax line (5.00) and summary tax (3.00) differ by > 0.02: must NOT be added together to pass
     inv = _make_invoice(
         subtotal=Decimal("100.00"),
         tax=Decimal("3.00"),
         line_items=[
             CanonicalLineItem(item_name="Tax line", line_total=Decimal("5.00"), kind=LineItemKind.TAX_LINE),
         ],
-        grand_total=Decimal("108.00"),  # 100 + 5 + 3 = 108.00
+        grand_total=Decimal("108.00"),  # 100 + 5 + 3 = 108.00 should be rejected
+    )
+    is_valid, errors = validate_tier3_grand_total(inv)
+    assert is_valid is False
+    assert any("Tax conflict" in e for e in errors)
+
+
+def test_tier3_deposit_line_item_included_in_grand_total():
+    # Invoice with a security deposit line item (+20.00)
+    inv = _make_invoice(
+        subtotal=Decimal("100.00"),
+        tax=Decimal("8.00"),
+        line_items=[
+            CanonicalLineItem(item_name="Item 1", line_total=Decimal("100.00"), kind=LineItemKind.GOODS),
+            CanonicalLineItem(item_name="Security Deposit", line_total=Decimal("20.00"), kind=LineItemKind.DEPOSIT),
+        ],
+        grand_total=Decimal("128.00"),  # 100 + 8 + 20 = 128.00
+    )
+    is_valid, errors = validate_tier3_grand_total(inv)
+    assert is_valid is True
+    assert errors == []
+
+
+def test_tier3_deposit_paid_subtracted_from_grand_total():
+    # Invoice with a deposit paid line item (-25.00)
+    inv = _make_invoice(
+        subtotal=Decimal("100.00"),
+        tax=Decimal("10.00"),
+        line_items=[
+            CanonicalLineItem(item_name="Item 1", line_total=Decimal("100.00"), kind=LineItemKind.GOODS),
+            CanonicalLineItem(item_name="Deposit Paid", line_total=Decimal("-25.00"), kind=LineItemKind.DEPOSIT),
+        ],
+        grand_total=Decimal("85.00"),  # 100 + 10 - 25 = 85.00
     )
     is_valid, errors = validate_tier3_grand_total(inv)
     assert is_valid is True
@@ -291,6 +325,48 @@ def test_tier4_with_positive_payment_in_description():
             CanonicalCharge(description="Current Charges", amount=Decimal("120.00")),
         ],
         amount_due=Decimal("120.00"),
+    )
+    is_valid, errors = validate_tier4_utility_total(inv)
+    assert is_valid is True
+    assert errors == []
+
+
+def test_tier4_late_payment_charge_positive_not_subtracted():
+    # "Late Payment Charge" $15.00 is a fee, must NOT be subtracted as a payment
+    inv = _make_invoice(
+        doc_type=DocType.UTILITY_BILL,
+        charges=[
+            CanonicalCharge(description="Current Electric Charges", amount=Decimal("100.00")),
+            CanonicalCharge(description="Late Payment Charge", amount=Decimal("15.00")),
+        ],
+        amount_due=Decimal("115.00"),  # 100 + 15 = 115
+    )
+    is_valid, errors = validate_tier4_utility_total(inv)
+    assert is_valid is True
+    assert errors == []
+
+    # If amount_due were 85.00 (subtracted), it must FAIL
+    inv_wrong = _make_invoice(
+        doc_type=DocType.UTILITY_BILL,
+        charges=[
+            CanonicalCharge(description="Current Electric Charges", amount=Decimal("100.00")),
+            CanonicalCharge(description="Late Payment Charge", amount=Decimal("15.00")),
+        ],
+        amount_due=Decimal("85.00"),
+    )
+    is_valid_wrong, _ = validate_tier4_utility_total(inv_wrong)
+    assert is_valid_wrong is False
+
+
+def test_tier4_payment_processing_fee_not_subtracted():
+    # "Payment Processing Fee" $3.50 is a fee, must NOT be subtracted
+    inv = _make_invoice(
+        doc_type=DocType.UTILITY_BILL,
+        charges=[
+            CanonicalCharge(description="Gas Delivery Service", amount=Decimal("50.00")),
+            CanonicalCharge(description="Payment Processing Fee", amount=Decimal("3.50")),
+        ],
+        amount_due=Decimal("53.50"),  # 50 + 3.50 = 53.50
     )
     is_valid, errors = validate_tier4_utility_total(inv)
     assert is_valid is True
@@ -451,3 +527,34 @@ def test_dates_unparseable_strings():
     )
     errors = validate_dates_and_metadata(inv)
     assert any("Unparseable" in e for e in errors)
+
+
+def test_dates_missing_invoice_date_when_target_month_none():
+    inv = _make_invoice(
+        invoice_date=None,
+        invoice_no="INV-1001",
+        grand_total=Decimal("10.00"),
+    )
+    errors = validate_dates_and_metadata(inv, target_month=None)
+    assert any("invoice_date is missing" in e for e in errors)
+
+
+def test_dates_missing_invoice_no_when_target_month_none():
+    inv = _make_invoice(
+        invoice_date="2026-08-01",
+        invoice_no=None,
+        grand_total=Decimal("10.00"),
+    )
+    errors = validate_dates_and_metadata(inv, target_month=None)
+    assert any("invoice_no is missing" in e for e in errors)
+
+
+def test_dates_missing_both_invoice_date_and_no():
+    inv = _make_invoice(
+        invoice_date=None,
+        invoice_no=None,
+        grand_total=Decimal("10.00"),
+    )
+    errors = validate_dates_and_metadata(inv, target_month=None)
+    assert any("invoice_date is missing" in e for e in errors)
+    assert any("invoice_no is missing" in e for e in errors)

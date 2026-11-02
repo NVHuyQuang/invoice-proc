@@ -120,11 +120,16 @@ def test_tier1_math_mismatch_fails():
     assert len(errors) == 1
     assert "Olive Oil" in errors[0]
     assert "math mismatch" in errors[0]
+    # Invariant: error message must not expose raw values
+    assert "|2 * 10.00 - 25.00|" not in errors[0]
+    assert "25.00" not in errors[0]
+    assert "diff:" in errors[0]
     assert checkable == 1
     assert uncheckable == 0
     assert items[0].checkable is True
     assert items[0].math_error is not None
     assert "Olive Oil" in items[0].math_error
+    assert "|2 * 10.00 - 25.00|" not in items[0].math_error
 
 
 def test_tier1_missing_qty():
@@ -210,7 +215,7 @@ def test_tier1_missing_line_total():
 
 
 def test_tier1_non_goods_lines_are_uncheckable():
-    """Non-goods lines (e.g. discount, fee, shipping) are bypassed and uncheckable."""
+    """Non-goods lines (e.g. discount, fee, shipping, deposit) are bypassed and not counted in uncheckable_count."""
     items = [
         CanonicalLineItem(
             item_name="Store Coupon",
@@ -226,15 +231,23 @@ def test_tier1_non_goods_lines_are_uncheckable():
             line_total=Decimal("2.50"),
             kind=LineItemKind.FEE,
         ),
+        CanonicalLineItem(
+            item_name="Bottle Deposit",
+            qty=None,
+            unit_price=None,
+            line_total=Decimal("0.50"),
+            kind=LineItemKind.DEPOSIT,
+        ),
     ]
 
     all_passed, errors, checkable, uncheckable = validate_tier1_lines(items)
     assert all_passed is True
     assert errors == []
     assert checkable == 0
-    assert uncheckable == 2
+    assert uncheckable == 0  # Non-goods lines must NOT increase uncheckable count
     assert items[0].checkable is False
     assert items[1].checkable is False
+    assert items[2].checkable is False
 
 
 def test_tier1_negative_qty_return():
@@ -344,7 +357,7 @@ def test_tier1_mixed_lines():
     assert len(errors) == 1
     assert "Bad Eggs" in errors[0]
     assert checkable == 2  # Good Milk and Bad Eggs
-    assert uncheckable == 2  # Bulk Rice and Coupon
+    assert uncheckable == 1  # Only Bulk Rice (goods), Coupon is non-goods and not counted
 
 
 # =============================================================================
