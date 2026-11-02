@@ -142,6 +142,20 @@ def _format_validation_error(err: Exception) -> str:
         return f"Schema validation error: {type(err).__name__}."
 
 
+def _filter_raw_numbers(content: str) -> str:
+    """Filter out unmasked real numbers from LLM response before resending in retry."""
+    def repl(m: re.Match) -> str:
+        tok = m.group(0)
+        if tok.startswith("<") and tok.endswith(">"):
+            return tok
+        return "[REDACTED]"
+
+    token_or_number_pattern = re.compile(
+        r'<(?:N|D|ID)_\d+(?::neg)?>|\b\d+(?:[.,]\d+)*\b'
+    )
+    return token_or_number_pattern.sub(repl, content)
+
+
 def _is_retryable_http_error(err: Exception) -> bool:
     """Check if exception is a 429, 5xx, timeout, or network connection error."""
     if isinstance(err, (RateLimitError, APITimeoutError, APIConnectionError, InternalServerError, TimeoutError)):
@@ -264,8 +278,9 @@ class LLMClient:
                     type(val_err).__name__,
                 )
                 val_feedback = _format_validation_error(val_err)
+                assistant_payload = _filter_raw_numbers(raw_content)
                 retry_messages = list(messages) + [
-                    {"role": "assistant", "content": raw_content},
+                    {"role": "assistant", "content": assistant_payload},
                     {
                         "role": "user",
                         "content": (

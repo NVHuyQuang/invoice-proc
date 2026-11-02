@@ -250,3 +250,13 @@ class TestVaultInvariants:
         # The exception only contains the missing token name, not any stored raw value
         assert missing_token in str(exc_info.value)
         assert secret not in str(exc_info.value)
+
+    def test_vault_entry_repr_and_str_mask_raw(self):
+        secret = "SECRET_RAW_SENSITIVE_555"
+        entry = _make_sample_entry(raw=secret)
+        repr_str = repr(entry)
+        str_str = str(entry)
+        assert secret not in repr_str
+        assert secret not in str_str
+        assert "raw='[REDACTED]'" in repr_str
+        assert "raw='[REDACTED]'" in str_str

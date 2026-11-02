@@ -14,11 +14,13 @@ Rehydration:
 """
 
 from collections import defaultdict
+import datetime
 from decimal import Decimal
 import re
 from typing import Tuple, List, Optional, Iterator
 
 from config import DEFAULT_DATE_LOCALE, OCR_CONFIDENCE_THRESHOLD, Category, SCHEMA_VERSION
+from core.numparse import AmbiguousNumberError, detect_document_locale, parse_number
 from core.types import Vault, VaultEntry, Provenance
 from models.schema import (
     LLMInvoice,
@@ -29,6 +31,22 @@ from models.schema import (
     LineItemKind,
     TOKEN_REF_PATTERN,
 )
+
+
+def _is_money_token(entry: VaultEntry) -> bool:
+    """Check if vault entry is money or has decimal money format without currency symbol."""
+    kind = getattr(entry, "kind", None)
+    if kind == "money":
+        return True
+    if kind == "number":
+        raw = getattr(entry, "raw", "")
+        if isinstance(raw, str):
+            cleaned = raw.strip().strip("()+-*# \t\n")
+            cleaned = re.sub(r'(?i)\s*(?:TX|TAX|T|F|N|E|X)$', '', cleaned).strip()
+            # Match decimal money format e.g. 12.50, 1,234.56, 1.234,56
+            if re.search(r'\d+[.,]\d{2}$', cleaned):
+                return True
+    return False
 
 
 class TokenVerificationError(Exception):
@@ -162,6 +180,19 @@ def verify_llm_tokens(llm_invoice: LLMInvoice, vault: Vault) -> Tuple[bool, List
                 norm = _normalize_token(val_str)
                 numeric_counts[norm] += 1
 
+    # Check duplicate_token: also check invoice_no_ref if it points to a numeric token
+    if llm_invoice.invoice_no_ref:
+        inv_no_str = llm_invoice.invoice_no_ref.strip()
+        if inv_no_str:
+            inv_no_norm = _normalize_token(inv_no_str)
+            inv_entry = _resolve_vault_entry(vault, inv_no_norm)
+            is_inv_numeric = (
+                (inv_entry is not None and getattr(inv_entry, "kind", None) in ("number", "money"))
+                or inv_no_norm.startswith("<N_")
+            )
+            if is_inv_numeric:
+                numeric_counts[inv_no_norm] += 1
+
     has_duplicate = any(count > 1 for count in numeric_counts.values())
     unassigned_tokens = {
         _normalize_token(u.strip())
@@ -187,10 +218,31 @@ def verify_llm_tokens(llm_invoice: LLMInvoice, vault: Vault) -> Tuple[bool, List
     money_vault_tokens = {
         _normalize_token(entry.token)
         for entry in vault.values()
-        if getattr(entry, "kind", None) == "money"
+        if _is_money_token(entry)
     }
 
-    orphan_money = money_vault_tokens - all_used_tokens
+    # Exclude rate tokens associated with summary percentages (e.g. tax rate '8.25%' preceding tax amount)
+    rate_tokens = set()
+    summary = llm_invoice.summary
+    if summary:
+        for ref in [summary.tax_ref, summary.discount_ref, summary.tip_ref]:
+            if ref and isinstance(ref, str):
+                m = re.match(r"^<N_(\d+)(?::neg)?>$", ref.strip())
+                if m:
+                    k = int(m.group(1))
+                    prev_tok = f"<N_{k - 1}>"
+                    prev_entry = _resolve_vault_entry(vault, prev_tok)
+                    if prev_entry is not None and getattr(prev_entry, "kind", None) == "number":
+                        try:
+                            cleaned_num = re.sub(r"[^\d.]", "", prev_entry.raw.replace(",", "."))
+                            if cleaned_num:
+                                raw_val = Decimal(cleaned_num)
+                                if 0 < raw_val <= 100:
+                                    rate_tokens.add(prev_tok)
+                        except Exception:
+                            pass
+
+    orphan_money = (money_vault_tokens - all_used_tokens) - rate_tokens
     if orphan_money:
         issues.append("orphan_money_tokens")
 
@@ -201,12 +253,13 @@ def verify_llm_tokens(llm_invoice: LLMInvoice, vault: Vault) -> Tuple[bool, List
 def _parse_decimal(raw: str, neg_hint: bool = False, locale: Optional[str] = None) -> Decimal:
     """Parse raw string to Decimal using core.numparse or internal fallback."""
     try:
-        from core.numparse import parse_number
         try:
             return parse_number(raw, neg_hint=neg_hint, document_locale=locale)
         except NotImplementedError:
             pass
-    except (ImportError, Exception):
+    except AmbiguousNumberError:
+        raise
+    except Exception:
         pass
 
     if not raw or not isinstance(raw, str):
@@ -293,11 +346,23 @@ def _parse_date(raw: str, default_locale: str = DEFAULT_DATE_LOCALE) -> Tuple[Op
                 y = next((n for n in nums if n >= 100), None)
             if y is None:
                 # 2-digit year
-                y = max(nums)
-                y = y + 2000 if y < 100 else y
-            d = next((n for n in nums if (n != y and n != (y - 2000)) and 1 <= n <= 31), None)
+                # If one number is > 31 it must be the year;
+                # otherwise in expressions like "Aug 28, 26" or "28 Aug 26", the year is the last number
+                if any(n > 31 for n in nums):
+                    y_cand = next(n for n in reversed(nums) if n > 31)
+                else:
+                    y_cand = nums[-1]
+                y = y_cand + 2000 if y_cand < 100 else y_cand
+                d = next((n for n in nums if n != y_cand and 1 <= n <= 31), None)
+            else:
+                d = next((n for n in nums if (n != y and n != (y - 2000)) and 1 <= n <= 31), None)
+
             if y is not None and d is not None:
-                return (f"{y:04d}-{m_num:02d}-{d:02d}", False)
+                try:
+                    valid_d = datetime.date(y, m_num, d)
+                    return (f"{valid_d.year:04d}-{valid_d.month:02d}-{valid_d.day:02d}", False)
+                except ValueError:
+                    return (None, True)
 
     # 2. ISO format YYYY-MM-DD or YYYY/MM/DD
     iso_match = re.match(r"^(\d{4})[-/\.](\d{1,2})[-/\.](\d{1,2})$", s)
@@ -305,7 +370,11 @@ def _parse_date(raw: str, default_locale: str = DEFAULT_DATE_LOCALE) -> Tuple[Op
         y = int(iso_match.group(1))
         m = int(iso_match.group(2))
         d = int(iso_match.group(3))
-        return (f"{y:04d}-{m:02d}-{d:02d}", False)
+        try:
+            valid_d = datetime.date(y, m, d)
+            return (f"{valid_d.year:04d}-{valid_d.month:02d}-{valid_d.day:02d}", False)
+        except ValueError:
+            return (None, True)
 
     # 3. Numeric 3-component: MM/DD/YYYY or DD/MM/YYYY
     num_match = re.match(r"^(\d{1,2})[-/\.](\d{1,2})[-/\.](\d{2,4})$", s)
@@ -316,17 +385,34 @@ def _parse_date(raw: str, default_locale: str = DEFAULT_DATE_LOCALE) -> Tuple[Op
         y = raw_year + 2000 if raw_year < 100 else raw_year
 
         if a > 12 and b <= 12:
-            return (f"{y:04d}-{b:02d}-{a:02d}", False)
+            try:
+                valid_d = datetime.date(y, b, a)
+                return (f"{valid_d.year:04d}-{valid_d.month:02d}-{valid_d.day:02d}", False)
+            except ValueError:
+                return (None, True)
         elif a <= 12 and b > 12:
-            return (f"{y:04d}-{a:02d}-{b:02d}", False)
+            try:
+                valid_d = datetime.date(y, a, b)
+                return (f"{valid_d.year:04d}-{valid_d.month:02d}-{valid_d.day:02d}", False)
+            except ValueError:
+                return (None, True)
         elif a <= 12 and b <= 12:
             if a == b:
-                return (f"{y:04d}-{a:02d}-{b:02d}", False)
+                try:
+                    valid_d = datetime.date(y, a, b)
+                    return (f"{valid_d.year:04d}-{valid_d.month:02d}-{valid_d.day:02d}", False)
+                except ValueError:
+                    return (None, True)
             # Ambiguous date
             if default_locale == "MM/DD":
-                return (f"{y:04d}-{a:02d}-{b:02d}", True)
+                m, d = a, b
             else:
-                return (f"{y:04d}-{b:02d}-{a:02d}", True)
+                m, d = b, a
+            try:
+                valid_d = datetime.date(y, m, d)
+                return (f"{valid_d.year:04d}-{valid_d.month:02d}-{valid_d.day:02d}", True)
+            except ValueError:
+                return (None, True)
 
     return (None, True)
 
@@ -366,6 +452,14 @@ def rehydrate_invoice(
     """
     eff_date_locale = date_locale or DEFAULT_DATE_LOCALE
 
+    # Detect document locale from numeric entries in vault
+    doc_numbers = [
+        entry.raw
+        for entry in vault.values()
+        if getattr(entry, "kind", None) in ("number", "money") and isinstance(entry.raw, str)
+    ]
+    doc_locale = detect_document_locale(doc_numbers) if doc_numbers else None
+
     # 1. Pre-rehydration token verification
     _, issues = verify_llm_tokens(llm_invoice, vault)
     review_reasons: List[str] = list(issues)
@@ -381,7 +475,11 @@ def rehydrate_invoice(
                 review_reasons.append("low_conf")
         neg = entry.neg_hint or token_ref.endswith(":neg>")
         try:
-            val = _parse_decimal(entry.raw, neg_hint=neg)
+            val = _parse_decimal(entry.raw, neg_hint=neg, locale=doc_locale)
+        except AmbiguousNumberError:
+            if "ambiguous_number" not in review_reasons:
+                review_reasons.append("ambiguous_number")
+            val = None
         except Exception:
             val = None
         prov = _make_provenance(entry)
@@ -466,10 +564,14 @@ def rehydrate_invoice(
     canonical_charges: List[CanonicalCharge] = []
     for ch in llm_invoice.charges:
         amt, amt_prov = _resolve_and_parse_num(ch.amount_ref)
+        if amt is None:
+            if "charge_amount_parse_failed" not in review_reasons:
+                review_reasons.append("charge_amount_parse_failed")
+            amt = Decimal("0")
         canonical_charges.append(
             CanonicalCharge(
                 description=ch.description,
-                amount=amt if amt is not None else Decimal("0"),
+                amount=amt,
                 amount_prov=amt_prov,
             )
         )

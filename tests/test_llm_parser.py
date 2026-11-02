@@ -187,8 +187,10 @@ def test_parse_invoice_raw_number_in_tokens_retry_without_data():
 
         # Check that the validation feedback does NOT contain the raw number "99.95"
         second_call_messages = mock_create.call_args_list[1][1]["messages"]
+        assistant_retry_content = second_call_messages[2]["content"]
         user_retry_content = second_call_messages[3]["content"]
 
+        assert "99.95" not in assistant_retry_content
         assert "99.95" not in user_retry_content
         assert "unit_price_ref" in user_retry_content
 

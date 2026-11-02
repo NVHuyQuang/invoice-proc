@@ -514,3 +514,113 @@ def test_line_item_checkable_logic():
     assert canonical.line_items[1].checkable is False
     assert canonical.line_items[1].line_total == Decimal("-5.00")
 
+
+def test_rehydrate_invoice_detects_document_locale():
+    """Gọi detect_document_locale trên các số trong document để truyền vào _parse_decimal."""
+    vault = Vault()
+    vault.add(create_vault_entry("<N_1>", "1.234,56", kind="money"))
+    vault.add(create_vault_entry("<N_2>", "12,50", kind="money"))
+    vault.add(create_vault_entry("<N_3>", "1.247,06", kind="money"))
+
+    llm_invoice = LLMInvoice(
+        line_items=[
+            LLMLineItem(item_name="Item A", line_total_ref="<N_1>"),
+            LLMLineItem(item_name="Item B", line_total_ref="<N_2>"),
+        ],
+        summary=LLMSummary(grand_total_ref="<N_3>"),
+    )
+
+    canonical = rehydrate_invoice(llm_invoice, vault, "inv.pdf", "sha123")
+    assert canonical.line_items[0].line_total == Decimal("1234.56")
+    assert canonical.line_items[1].line_total == Decimal("12.50")
+    assert canonical.grand_total == Decimal("1247.06")
+
+
+def test_ambiguous_number_propagates_to_review_reasons():
+    """AmbiguousNumberError không bị nuốt mà propagate vào review_reasons."""
+    vault = Vault()
+    vault.add(create_vault_entry("<N_1>", "1,234", kind="number"))
+    llm_invoice = LLMInvoice(
+        summary=LLMSummary(grand_total_ref="<N_1>"),
+    )
+
+    # Calling with ambiguous number where locale cannot be inferred
+    from unittest.mock import patch as mock_patch
+    with mock_patch("core.rehydrator.detect_document_locale", return_value=None):
+        canonical = rehydrate_invoice(llm_invoice, vault, "inv.pdf", "sha123")
+        assert "ambiguous_number" in canonical.review_reasons
+        assert canonical.grand_total is None
+
+
+def test_parse_date_2digit_year_aug_28_26():
+    """Sửa lỗi chọn năm 2 chữ số (Aug 28, 26 không lấy max nhầm thành 2028). Validate ngày bằng datetime.date."""
+    from core.rehydrator import _parse_date
+
+    iso_date, is_ambig = _parse_date("Aug 28, 26")
+    assert iso_date == "2026-08-28"
+    assert is_ambig is False
+
+    iso_date, is_ambig = _parse_date("28 Aug 26")
+    assert iso_date == "2026-08-28"
+    assert is_ambig is False
+
+    # Invalid date validation
+    invalid_date, _ = _parse_date("Feb 30, 2026")
+    assert invalid_date is None
+
+    invalid_date2, _ = _parse_date("02/30/2026")
+    assert invalid_date2 is None
+
+
+def test_charge_amount_parse_failure_adds_review_reason():
+    """Khi charge amount parse thất bại: không âm thầm gán Decimal('0') mà thêm lý do vào review_reasons."""
+    vault = Vault()
+    vault.add(create_vault_entry("<N_1>", "INVALID_NUM", kind="money"))
+
+    llm_invoice = LLMInvoice(
+        charges=[
+            LLMCharge(description="Service Fee", amount_ref="<N_1>"),
+        ],
+    )
+
+    canonical = rehydrate_invoice(llm_invoice, vault, "inv.pdf", "sha123")
+    assert len(canonical.charges) == 1
+    assert canonical.charges[0].amount == Decimal("0")
+    assert any("charge" in r.lower() for r in canonical.review_reasons)
+
+
+def test_duplicate_token_in_invoice_no_if_numeric():
+    """Kiểm tra duplicate_token: kiểm tra cả invoice_no_ref nếu nó trỏ vào token kiểu số."""
+    vault = Vault()
+    vault.add(create_vault_entry("<N_1>", "12345", kind="number"))
+    vault.add(create_vault_entry("<N_2>", "50.00", kind="money"))
+
+    # invoice_no_ref points to <N_1>, which is also reused in grand_total_ref
+    llm_invoice = LLMInvoice(
+        invoice_no_ref="<N_1>",
+        summary=LLMSummary(grand_total_ref="<N_1>"),
+    )
+
+    is_valid, issues = verify_llm_tokens(llm_invoice, vault)
+    assert is_valid is False
+    assert "duplicate_token" in issues
+
+
+def test_orphan_money_tokens_decimal_format_without_currency_symbol():
+    """orphan_money_tokens: kiểm tra cả các token số có định dạng tiền thập phân dù không có ký hiệu tiền tệ."""
+    vault = Vault()
+    vault.add(create_vault_entry("<N_1>", "10.00", kind="money"))
+    # Token <N_2> has kind="number" (no currency symbol), but its format is decimal money "45.00"
+    vault.add(create_vault_entry("<N_2>", "45.00", kind="number"))
+    # Token <N_3> has kind="number" and is an integer quantity "5"
+    vault.add(create_vault_entry("<N_3>", "5", kind="number"))
+
+    llm_invoice = LLMInvoice(
+        summary=LLMSummary(grand_total_ref="<N_1>"),
+    )
+
+    is_valid, issues = verify_llm_tokens(llm_invoice, vault)
+    assert is_valid is False
+    assert "orphan_money_tokens" in issues
+
+
