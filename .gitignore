@@ -1,5 +1,6 @@
 # Environment and secrets
 .env*
+!.env.example
 
 # Input and output data
 input_pdfs/
@@ -10,27 +11,64 @@ samples/
 data_private/
 _work/
 eval/golden/
+~$*.xlsx
+~$*.xls
+
+# Node.js & Frontend
+node_modules/
+frontend/node_modules/
+.next/
+frontend/.next/
+out/
+frontend/out/
+.turbo/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+frontend/next-env.d.ts
 
 # Python environments and cache
 .venv/
 venv/
+env/
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
 .pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.mypy_cache/
+.ruff_cache/
 *.egg-info/
+dist/
+build/
+
+# Model caches & OCR weights
+.paddleocr/
+.paddlex/
+tools/tessdata/
 
 # Archives and sample data
 *.zip
 *.rar
+*.7z
+*.tar.gz
 *.heic
 08.Aug 2026-*/
 Hyperpure invoice reading tool/
 
-# OMC state
-.omc/state/
+# OMC / Agent state
+.omc/
 
-# Logs
-*.log
-
-# Tesseract local languages
-tools/tessdata/
+# System and editor files
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.tmp
