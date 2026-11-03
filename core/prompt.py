@@ -312,3 +312,36 @@ def build_user_message(masked_document_text: str) -> str:
         "Trả về duy nhất đối tượng JSON theo schema LLMInvoice.\n\n"
         f"--- BẮT ĐẦU VĂN BẢN ---\n{masked_document_text}\n--- KẾT THÚC VĂN BẢN ---"
     )
+
+
+def build_vlm_system_prompt() -> str:
+    """Build system instructions for multimodal VLM invoice extraction."""
+    categories_list = "\n".join(f'- "{c.value}"' for c in Category)
+    return (
+        "Bạn là chuyên gia phân tích và trích xuất dữ liệu hóa đơn/biên lai/phiếu thanh toán từ hình ảnh.\n"
+        "Nhiệm vụ của bạn là đọc kỹ toàn bộ nội dung trong hình ảnh và trích xuất dữ liệu thành một JSON hợp lệ tuân thủ schema VLMInvoice.\n\n"
+        "QUY TẮC TRÍCH XUẤT:\n"
+        "1. Trích xuất đúng số liệu thật hiển thị trên tài liệu, không làm tròn hay tự suy đoán số liệu.\n"
+        "2. vendor_name: Tên đơn vị phát hành hóa đơn / nhà cung cấp / người bán (chuỗi văn bản, ví dụ 'ACME Test Foods Inc.').\n"
+        "3. invoice_no: Số hóa đơn / số biên lai (ví dụ 'INV-2026-001').\n"
+        "4. Số tiền, số lượng, đơn giá có thể ghi chuỗi định dạng nguyên bản (ví dụ: '12.50', '1,250.00', '12.50-', '(50.00)').\n"
+        "5. Phân loại loại tài liệu (doc_type): 'goods_invoice', 'receipt', 'utility_bill', 'credit_memo', 'statement', hoặc 'other'.\n"
+        "6. Phân loại chi phí (category) chỉ được chọn một trong các giá trị sau:\n"
+        f"{categories_list}\n"
+        f'Nếu không rõ, chọn "{Category.OTHER.value}".\n'
+        "7. Cấu trúc line_items cho hóa đơn mua hàng có danh sách mặt hàng:\n"
+        "   - item_name, qty, unit_price, line_total, unit, kind ('goods', 'fee', 'discount', 'tax_line', 'deposit', 'shipping'), checkable (true/false).\n"
+        "   - Đảm bảo tính toán số học chính xác trên từng dòng: line_total = qty * unit_price (trừ khi có chiết khấu hiển thị rõ). Trên hóa đơn có nhiều cột giá (như 'Regular Price' vs 'Your Price' / 'Total'), lấy đúng cột đơn giá và thành tiền thực tế thanh toán, không lấy giá niêm yết ban đầu.\n"
+        "   - Nếu là khoản giảm giá (discount), line_total ghi giá trị giảm (dấu trừ hoặc số âm nếu có).\n"
+        "8. Hóa đơn tiện ích (utility_bill: điện nước khí đốt như Con Edison):\n"
+        "   - invoice_no: Lấy số tài khoản (Account Number) hoặc Bill Number.\n"
+        "   - invoice_date: Lấy ngày xuất hóa đơn (Bill Date, Billing Date, Statement Date, Date of Bill).\n"
+        "   - due_date: Lấy ngày hạn thanh toán (Payment Due Date, Due Date).\n"
+        "   - charges: Liệt kê ĐẦY ĐỦ các khoản mục tạo nên tổng tiền thanh toán (bao gồm Previous Balance / Past Due Balance, Payments Received (ghi số âm nếu là khoản đã trả trừ vào tổng), và New Charges / Phí điện, gas mới) sao cho tổng các khoản charges khớp với amount_due.\n"
+        "   - line_items: Để mảng rỗng [] cho utility_bill.\n"
+        "9. Tóm tắt tổng (summary): subtotal, tax, discount, shipping, tip, fees, grand_total, amount_due.\n"
+        "   - QUY TẮC CHỐNG CỘNG TRÙNG PHÍ: Nếu một khoản phí (phí thẻ, phí xử lý, phí giao hàng...) ĐÃ nằm trong danh sách dòng hàng ('line_items') và đã được tính vào 'subtotal', TUYỆT ĐỐI KHÔNG điền lại vào 'summary.fees' hay 'summary.shipping' (để tránh cộng 2 lần làm sai lệch grand_total).\n"
+        "   - Chỉ điền vào summary.fees hoặc summary.shipping khi khoản phí đó xuất hiện độc lập ở phần tổng kết bên dưới subtotal.\n"
+        "10. Trả về DUY NHẤT một JSON hợp lệ tuân thủ schema VLMInvoice, không kèm văn bản giải thích."
+    )
+build_vlm_system_prompt.prompt_version = PROMPT_VERSION  # type: ignore[attr-defined]

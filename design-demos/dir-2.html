@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Direction 2: Clermont Ledger — Pizza 4P's Invoice Processor</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;700;900&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            parchment: { 50: '#faf8f3', 100: '#f5f0e4', 200: '#ecddc7', 300: '#ddc8a5' },
+            ink: { 900: '#1c1612', 800: '#2a2019', 700: '#3d3027', 600: '#584637', 400: '#876b55' },
+            stamp: { green: '#2d4a2a', red: '#8b1a1a', blue: '#1a2e5a' }
+          },
+          fontFamily: {
+            serif: ['"Playfair Display"', 'Georgia', 'serif'],
+            mono: ['"IBM Plex Mono"', 'monospace'],
+            sans: ['Inter', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { background-color: #1a1710; font-family: 'Inter', sans-serif; }
+    .parchment-texture {
+      background-color: #f5f0e4;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Crect width='4' height='4' fill='%23f5f0e4'/%3E%3Crect x='0' y='0' width='1' height='1' fill='%23ecddc7' opacity='0.4'/%3E%3C/svg%3E");
+    }
+    .ledger-line { border-bottom: 1px solid #ddc8a5; }
+    .double-rule { border-top: 3px double #2a2019; }
+    .stamp-verified {
+      border: 3px solid #2d4a2a;
+      color: #2d4a2a;
+      font-family: 'IBM Plex Mono', monospace;
+      transform: rotate(-7deg);
+      opacity: 0.9;
+      display: inline-block;
+    }
+    .stamp-review {
+      border: 3px solid #8b1a1a;
+      color: #8b1a1a;
+      transform: rotate(-3deg);
+      opacity: 0.9;
+    }
+    .token-mask {
+      background: rgba(26, 46, 90, 0.15);
+      border: 1px solid rgba(26, 46, 90, 0.4);
+      color: #1a2e5a;
+    }
+    .custom-scroll::-webkit-scrollbar { width: 6px; }
+    .custom-scroll::-webkit-scrollbar-track { background: #ecddc7; }
+    .custom-scroll::-webkit-scrollbar-thumb { background: #876b55; border-radius: 3px; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col text-sm">
+
+  <!-- Masthead (Book-style Top Bar) -->
+  <header class="bg-ink-900 px-8 py-3 flex items-center justify-between border-b-4 border-amber-700/50">
+    <div class="flex items-center gap-4">
+      <div class="flex flex-col items-center gap-0.5">
+        <div class="text-[8px] text-amber-700/70 font-mono tracking-[4px] uppercase">Established</div>
+        <div class="text-amber-600 font-mono text-xs font-bold tracking-wide">PIZZA 4P'S NYC</div>
+        <div class="text-[8px] text-amber-700/70 font-mono tracking-[4px] uppercase">MMXVIII</div>
+      </div>
+      <div class="h-10 w-px bg-amber-800/40"></div>
+      <div>
+        <div class="text-white font-serif text-lg font-bold leading-tight">Invoice Reconciliation Ledger</div>
+        <div class="text-amber-700/70 font-mono text-[10px] tracking-wider uppercase">Financial Document Processing System — August 2026</div>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <div class="text-right font-mono text-[10px]">
+        <div class="text-amber-700/60 uppercase tracking-wider">Period</div>
+        <div class="text-amber-400 font-semibold">Aug 1–31, 2026</div>
+      </div>
+      <div class="h-10 w-px bg-amber-800/40"></div>
+      <div class="text-right font-mono text-[10px]">
+        <div class="text-amber-700/60 uppercase tracking-wider">Total Documents</div>
+        <div class="text-amber-400 font-semibold">215 Files</div>
+      </div>
+      <div class="h-10 w-px bg-amber-800/40"></div>
+      <button class="px-3 py-2 border border-amber-700/50 text-amber-400 hover:bg-amber-700/10 font-mono text-[11px] transition flex items-center gap-2">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        Export Ledger
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Ledger Area -->
+  <div class="flex-1 flex gap-0" style="background: #1a1710;">
+
+    <!-- Left: File Catalog (Ink-on-paper style list) -->
+    <div class="w-72 bg-ink-900 flex flex-col border-r border-amber-900/40">
+      <!-- Section Title -->
+      <div class="px-4 py-3 border-b border-amber-900/30">
+        <div class="font-serif text-amber-300 text-sm font-bold">Document Register</div>
+        <div class="font-mono text-[10px] text-amber-800/70 mt-0.5">AUGUST 2026 BATCH — 215 ENTRIES</div>
+      </div>
+      
+      <!-- Group Headers & Items -->
+      <div class="flex-1 overflow-y-auto custom-scroll py-2">
+        
+        <!-- Group: Food Ingredients -->
+        <div class="px-3 py-1">
+          <div class="font-mono text-[9px] text-amber-700/60 uppercase tracking-widest pb-1 border-b border-amber-900/20">
+            Food & Ingredients
+          </div>
+          
+          <div class="space-y-0.5 mt-1">
+            <!-- Active item -->
+            <div class="bg-parchment-100/10 border-l-2 border-amber-500 px-2 py-2 cursor-pointer">
+              <div class="flex justify-between items-start">
+                <span class="font-medium text-amber-200 text-[11px] leading-tight">Baldor - IV101-0029021609</span>
+                <span class="text-[9px] text-amber-600 font-mono">PASS</span>
+              </div>
+              <div class="flex justify-between mt-1 font-mono text-[9px] text-amber-800/70">
+                <span>2026-08-01</span>
+                <span class="text-amber-300 font-semibold">$97.21</span>
+              </div>
+            </div>
+
+            <div class="border-l-2 border-transparent hover:border-amber-800/50 px-2 py-2 cursor-pointer hover:bg-amber-900/10 transition">
+              <div class="flex justify-between items-start">
+                <span class="text-amber-400/70 text-[11px] leading-tight">Farm.one - INV-17537</span>
+                <span class="text-[9px] text-green-600/70 font-mono">PASS</span>
+              </div>
+              <div class="flex justify-between mt-1 font-mono text-[9px] text-amber-800/50">
+                <span>2026-08-15</span>
+                <span class="text-amber-500/70">$248.00</span>
+              </div>
+            </div>
+
+            <div class="border-l-2 border-transparent hover:border-amber-800/50 px-2 py-2 cursor-pointer hover:bg-amber-900/10 transition">
+              <div class="flex justify-between items-start">
+                <span class="text-amber-400/70 text-[11px] leading-tight">Natoora - NYC2571613</span>
+                <span class="text-[9px] text-amber-600/70 font-mono">OCR</span>
+              </div>
+              <div class="flex justify-between mt-1 font-mono text-[9px] text-amber-800/50">
+                <span>2026-08-20</span>
+                <span class="text-amber-500/70">$512.40</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Group: Beverages -->
+        <div class="px-3 py-1 mt-2">
+          <div class="font-mono text-[9px] text-amber-700/60 uppercase tracking-widest pb-1 border-b border-amber-900/20">
+            Beverages
+          </div>
+          <div class="space-y-0.5 mt-1">
+            <div class="border-l-2 border-rose-700/80 px-2 py-2 cursor-pointer bg-rose-950/15 hover:bg-rose-950/25 transition">
+              <div class="flex justify-between items-start">
+                <span class="text-rose-300 text-[11px] leading-tight">Union Beer - 375436</span>
+                <span class="text-[9px] text-rose-500 font-mono font-bold">FLAG</span>
+              </div>
+              <div class="flex justify-between mt-1 font-mono text-[9px] text-amber-800/50">
+                <span>2026-08-04</span>
+                <span class="text-rose-400">$640.50 (±$0.05)</span>
+              </div>
+            </div>
+
+            <div class="border-l-2 border-transparent hover:border-amber-800/50 px-2 py-2 cursor-pointer hover:bg-amber-900/10 transition">
+              <div class="flex justify-between items-start">
+                <span class="text-amber-400/70 text-[11px] leading-tight">Kyodo Beverage - 5943804</span>
+                <span class="text-[9px] text-amber-600/70 font-mono">IMG</span>
+              </div>
+              <div class="flex justify-between mt-1 font-mono text-[9px] text-amber-800/50">
+                <span>2026-08-10</span>
+                <span class="text-amber-500/70">$320.00</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Group: Receipts / Small Purchases -->
+        <div class="px-3 py-1 mt-2">
+          <div class="font-mono text-[9px] text-amber-700/60 uppercase tracking-widest pb-1 border-b border-amber-900/20">
+            Receipts & Cash
+          </div>
+          <div class="space-y-0.5 mt-1">
+            <div class="border-l-2 border-transparent hover:border-amber-800/50 px-2 py-2 cursor-pointer hover:bg-amber-900/10 transition">
+              <div class="flex justify-between items-start">
+                <span class="text-amber-400/70 text-[11px] leading-tight">Whole Foods - 98.52USD</span>
+                <span class="text-[9px] text-amber-600/70 font-mono">OCR</span>
+              </div>
+              <div class="flex justify-between mt-1 font-mono text-[9px] text-amber-800/50">
+                <span>2026-08-12</span>
+                <span class="text-amber-500/70">$98.52</span>
+              </div>
+            </div>
+
+            <div class="border-l-2 border-transparent hover:border-amber-800/50 px-2 py-2 cursor-pointer hover:bg-amber-900/10 transition">
+              <div class="flex justify-between items-start">
+                <span class="text-amber-400/70 text-[11px] leading-tight">Asscociated - 5.29USD</span>
+                <span class="text-[9px] text-purple-500/70 font-mono">HEIC</span>
+              </div>
+              <div class="flex justify-between mt-1 font-mono text-[9px] text-amber-800/50">
+                <span>2026-08-03</span>
+                <span class="text-amber-500/70">$5.29</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Bottom summary on ink-dark -->
+      <div class="p-3 border-t border-amber-900/30 font-mono text-[10px] bg-ink-900">
+        <div class="flex justify-between text-amber-700/60 mb-1">
+          <span>TOTAL PROCESSED</span>
+          <span class="text-amber-400 font-bold">$84,392.15</span>
+        </div>
+        <div class="flex justify-between text-amber-700/60">
+          <span>PENDING REVIEW</span>
+          <span class="text-rose-400 font-semibold">7 invoices</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Center: Parchment Ledger Document -->
+    <div class="flex-1 flex flex-col overflow-hidden">
+      
+      <!-- Toolbar strip above parchment -->
+      <div class="bg-ink-800 px-4 py-2 flex items-center justify-between border-b border-amber-900/30">
+        <div class="flex items-center gap-4 font-mono text-[10px]">
+          <span class="text-amber-700/60">Viewing: <strong class="text-amber-300">Baldor - IV101-0029021609.pdf</strong></span>
+          <span class="text-amber-700/30">|</span>
+          <span class="text-amber-700/60">OCR Engine: <strong class="text-cyan-400/70">PaddleOCR (1 page, 34 spans)</strong></span>
+          <span class="text-amber-700/30">|</span>
+          <span class="text-amber-700/60">Masking: <strong class="text-green-400/70">Active (11 tokens)</strong></span>
+        </div>
+        <div class="flex gap-2">
+          <button class="px-2 py-1 border border-amber-800/50 text-amber-600 hover:bg-amber-900/20 font-mono text-[10px] transition">
+            ← Prev
+          </button>
+          <button class="px-2 py-1 border border-amber-800/50 text-amber-600 hover:bg-amber-900/20 font-mono text-[10px] transition">
+            Next →
+          </button>
+        </div>
+      </div>
+
+      <!-- Parchment Document -->
+      <div class="flex-1 overflow-y-auto custom-scroll p-8 flex justify-center" style="background: #14120d;">
+        <div class="w-[620px] parchment-texture text-ink-900 shadow-2xl shadow-black/60 p-10 text-sm leading-relaxed" style="font-family: 'Inter', sans-serif;">
+
+          <!-- Header Rule -->
+          <div class="text-center mb-6">
+            <div class="text-xl font-serif font-bold tracking-tight text-ink-900">BALDOR SPECIALTY FOODS</div>
+            <div class="text-xs text-ink-600 font-mono tracking-widest mt-1">511 BARRY STREET — BRONX, NY 10474</div>
+            <div class="double-rule mt-4"></div>
+            <div class="text-lg font-serif font-bold tracking-[6px] mt-2 uppercase text-ink-800">Invoice</div>
+            <div class="mt-1 border-t border-ink-400/30"></div>
+          </div>
+
+          <!-- Invoice Meta Grid -->
+          <div class="grid grid-cols-2 gap-4 mb-6 text-xs font-mono">
+            <div class="ledger-line py-1.5 flex justify-between">
+              <span class="text-ink-600">Invoice No.</span>
+              <span class="font-bold text-ink-900">IV101-0029021609</span>
+            </div>
+            <div class="ledger-line py-1.5 flex justify-between">
+              <span class="text-ink-600">Invoice Date</span>
+              <span class="font-bold text-ink-900">August 1, 2026</span>
+            </div>
+            <div class="ledger-line py-1.5 flex justify-between">
+              <span class="text-ink-600">Bill To</span>
+              <span class="font-bold text-ink-900">Pizza 4P's NYC</span>
+            </div>
+            <div class="ledger-line py-1.5 flex justify-between">
+              <span class="text-ink-600">Payment Terms</span>
+              <span class="font-bold text-ink-900">Net 30 Days</span>
+            </div>
+          </div>
+
+          <!-- Ledger Table Lines -->
+          <div class="mt-6">
+            <div class="grid grid-cols-12 text-[11px] font-mono font-bold text-ink-700 pb-1 border-b-2 border-ink-800 uppercase tracking-wider">
+              <span class="col-span-1">Qty</span>
+              <span class="col-span-2">Code</span>
+              <span class="col-span-5">Description of Goods</span>
+              <span class="col-span-2 text-right">Unit Price</span>
+              <span class="col-span-2 text-right">Amount</span>
+            </div>
+
+            <div class="grid grid-cols-12 ledger-line py-2 text-[11px] font-mono">
+              <span class="col-span-1">1</span>
+              <span class="col-span-2 text-ink-600">JU14H</span>
+              <span class="col-span-5 font-medium">Juice Lemon 6×32 oz Orchid Is.</span>
+              <span class="col-span-2 text-right">33.99</span>
+              <span class="col-span-2 text-right font-bold">33.99</span>
+            </div>
+
+            <div class="grid grid-cols-12 ledger-line py-2 text-[11px] font-mono">
+              <span class="col-span-1">1</span>
+              <span class="col-span-2 text-ink-600">JU18C1</span>
+              <span class="col-span-5 font-medium">Juice Orange Blood 6×12 oz</span>
+              <span class="col-span-2 text-right">23.09</span>
+              <span class="col-span-2 text-right font-bold">23.09</span>
+            </div>
+
+            <div class="grid grid-cols-12 ledger-line py-2 text-[11px] font-mono">
+              <span class="col-span-1">1</span>
+              <span class="col-span-2 text-ink-600">JUICE11</span>
+              <span class="col-span-5 font-medium">Juice Apple Fuji 6×12 oz Red Jacket</span>
+              <span class="col-span-2 text-right">15.29</span>
+              <span class="col-span-2 text-right font-bold">15.29</span>
+            </div>
+
+            <div class="grid grid-cols-12 ledger-line py-2 text-[11px] font-mono">
+              <span class="col-span-1">1</span>
+              <span class="col-span-2 text-ink-600">JUICE33</span>
+              <span class="col-span-5 font-medium">Lemonade Zinger 6×12 oz</span>
+              <span class="col-span-2 text-right">14.59</span>
+              <span class="col-span-2 text-right font-bold">14.59</span>
+            </div>
+
+            <div class="grid grid-cols-12 ledger-line py-2 text-[11px] font-mono">
+              <span class="col-span-1">1</span>
+              <span class="col-span-2 text-ink-600">ME2</span>
+              <span class="col-span-5 font-medium">Watermelon Sangria Seeded</span>
+              <span class="col-span-2 text-right">10.25</span>
+              <span class="col-span-2 text-right font-bold">10.25</span>
+            </div>
+          </div>
+
+          <!-- Total Block -->
+          <div class="mt-4 flex justify-end">
+            <div class="w-48 font-mono text-[11px] space-y-1">
+              <div class="ledger-line py-1 flex justify-between text-ink-600">
+                <span>Nontaxable Subtotal</span>
+                <span class="font-semibold text-ink-900">$97.21</span>
+              </div>
+              <div class="ledger-line py-1 flex justify-between text-ink-600">
+                <span>Tax</span>
+                <span class="font-semibold text-ink-900">$0.00</span>
+              </div>
+              <div class="double-rule pt-2 flex justify-between font-bold text-sm text-ink-900">
+                <span>Total Invoice</span>
+                <span>$97.21</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Verified Stamp -->
+          <div class="mt-8 flex justify-end">
+            <div class="stamp-verified border-4 px-4 py-2 rounded-sm inline-block text-center">
+              <div class="font-mono text-[11px] font-extrabold tracking-widest uppercase">Verified</div>
+              <div class="font-mono text-[9px] tracking-[2px]">MATH: PASS</div>
+              <div class="font-mono text-[9px]">2026-08-01 / PaddleOCR</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Slim Verification Panel -->
+    <div class="w-64 bg-ink-900 flex flex-col border-l border-amber-900/40">
+      <!-- Panel Header -->
+      <div class="px-4 py-3 border-b border-amber-900/30">
+        <div class="font-serif text-amber-300 text-sm font-bold">Audit Ledger</div>
+        <div class="font-mono text-[10px] text-amber-800/70 mt-0.5">EXTRACTION LOG</div>
+      </div>
+
+      <!-- Extracted Fields -->
+      <div class="flex-1 overflow-y-auto custom-scroll p-3 space-y-3">
+        
+        <div>
+          <div class="text-[9px] font-mono text-amber-700/60 uppercase tracking-widest mb-1">Extracted Header</div>
+          <div class="space-y-1">
+            <div class="flex justify-between text-[10px] font-mono border-b border-amber-900/20 pb-1">
+              <span class="text-amber-700/70">Vendor</span>
+              <span class="text-amber-300 font-medium text-right max-w-[100px] truncate">Baldor</span>
+            </div>
+            <div class="flex justify-between text-[10px] font-mono border-b border-amber-900/20 pb-1">
+              <span class="text-amber-700/70">Invoice No</span>
+              <span class="text-amber-300 font-mono">IV101-0029...</span>
+            </div>
+            <div class="flex justify-between text-[10px] font-mono border-b border-amber-900/20 pb-1">
+              <span class="text-amber-700/70">Date</span>
+              <span class="text-amber-300">2026-08-01</span>
+            </div>
+            <div class="flex justify-between text-[10px] font-mono">
+              <span class="text-amber-700/70">Currency</span>
+              <span class="text-amber-300">USD</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Math Verification -->
+        <div class="mt-2">
+          <div class="text-[9px] font-mono text-amber-700/60 uppercase tracking-widest mb-2">Math Verification</div>
+          <div class="space-y-1">
+            <div class="flex items-center gap-2 text-[10px] font-mono text-green-400/80">
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+              <span>Line totals sum: $97.21</span>
+            </div>
+            <div class="flex items-center gap-2 text-[10px] font-mono text-green-400/80">
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+              <span>Invoice total: $97.21</span>
+            </div>
+            <div class="flex items-center gap-2 text-[10px] font-mono text-green-400/80">
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+              <span>Qty × Price checks: 5/5</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Privacy Log -->
+        <div class="mt-2">
+          <div class="text-[9px] font-mono text-amber-700/60 uppercase tracking-widest mb-2">Zero-Knowledge Log</div>
+          <div class="bg-ink-800 border border-amber-900/30 rounded p-2 text-[9px] font-mono text-amber-600/60 space-y-1">
+            <div>LLM Sees: <span class="text-cyan-400/60">&lt;MONEY_1..5&gt;</span></div>
+            <div>LLM Blind to: <span class="text-rose-400/50">real amounts</span></div>
+            <div class="text-green-400/60">Vault: 11 tokens locked</div>
+          </div>
+        </div>
+
+        <!-- Category Tag -->
+        <div class="mt-2">
+          <div class="text-[9px] font-mono text-amber-700/60 uppercase tracking-widest mb-1">Category (LLM Tagged)</div>
+          <span class="text-[10px] font-mono text-amber-300 bg-amber-900/20 border border-amber-800/30 px-2 py-0.5 rounded">
+            🥬 Food Ingredients
+          </span>
+        </div>
+
+      </div>
+
+      <!-- Approve footer -->
+      <div class="p-3 border-t border-amber-900/30">
+        <button class="w-full py-2 border border-amber-600/50 text-amber-400 hover:bg-amber-900/20 font-serif font-bold text-sm transition text-center">
+          Approve Entry
+        </button>
+        <div class="text-center font-mono text-[9px] text-amber-800/40 mt-1">ENTER or click to proceed</div>
+      </div>
+    </div>
+
+  </div>
+
+</body>
+</html>

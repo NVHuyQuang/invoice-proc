@@ -129,7 +129,10 @@ def _clean_json_markdown(text: str) -> str:
     match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, flags=re.DOTALL)
     if match:
         return match.group(1).strip()
-    return text
+    # Strip opening fence if closing fence is missing (e.g. truncated)
+    text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s*```$", "", text)
+    return text.strip()
 
 
 def _format_validation_error(err: Exception) -> str:
@@ -229,6 +232,7 @@ class LLMClient:
                     messages=cast(List[ChatCompletionMessageParam], messages),
                     temperature=0,
                     response_format={"type": "json_object"},
+                    max_tokens=8192,
                     timeout=self.timeout,
                 )
                 if not response.choices or not response.choices[0].message:
@@ -309,6 +313,71 @@ class LLMClient:
                     )
                     raise second_err
 
+    def parse_invoice_vision(
+        self,
+        images_base64: List[str],
+        prompt: Optional[str] = None,
+    ) -> Any:
+        """Call LLM with invoice images and parse structured output into VLMInvoice.
+
+        Args:
+            images_base64: List of base64-encoded JPEG image strings.
+            prompt: Optional system prompt override. Defaults to build_vlm_system_prompt().
+
+        Returns:
+            Validated VLMInvoice instance.
+        """
+        from core.prompt import build_vlm_system_prompt
+        from models.schema import VLMInvoice
+
+        system_instruction = prompt or build_vlm_system_prompt()
+        user_content: List[Dict[str, Any]] = [
+            {"type": "text", "text": "Trích xuất toàn bộ dữ liệu hóa đơn từ các trang ảnh được cung cấp:"}
+        ]
+        for b64 in images_base64:
+            user_content.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{b64}"}
+            })
+
+        messages = [
+            {"role": "system", "content": system_instruction},
+            {"role": "user", "content": user_content},
+        ]
+
+        with self._semaphore:
+            raw_content = self._call_with_network_retries(messages)
+            cleaned_content = _clean_json_markdown(raw_content)
+
+            try:
+                return VLMInvoice.model_validate_json(cleaned_content)
+            except (ValidationError, json.JSONDecodeError, ValueError) as val_err:
+                logger.warning(
+                    "Structural error in VLM response: %s. Retrying once with error feedback.",
+                    type(val_err).__name__,
+                )
+                val_feedback = _format_validation_error(val_err)
+                retry_messages = list(messages) + [
+                    {"role": "assistant", "content": cleaned_content},
+                    {
+                        "role": "user",
+                        "content": (
+                            f"The previous output had validation errors:\n{val_feedback}\n\n"
+                            "Please correct the JSON output to strictly match the required schema. Output valid JSON only."
+                        ),
+                    },
+                ]
+
+                retry_raw_content = self._call_with_network_retries(retry_messages)
+                try:
+                    return VLMInvoice.model_validate_json(_clean_json_markdown(retry_raw_content))
+                except Exception as second_err:
+                    logger.error(
+                        "VLM output validation failed again on retry: %s",
+                        type(second_err).__name__,
+                    )
+                    raise second_err
+
 
 def parse_invoice(
     prompt: str,
@@ -328,3 +397,23 @@ def parse_invoice(
     if client is None:
         client = LLMClient()
     return client.parse_invoice(prompt, masked_payload)
+
+
+def parse_invoice_vision(
+    images_base64: List[str],
+    prompt: Optional[str] = None,
+    client: Optional[LLMClient] = None,
+) -> Any:
+    """Parse invoice images into VLMInvoice.
+
+    Args:
+        images_base64: List of base64-encoded JPEG image strings.
+        prompt: Optional system instruction prompt.
+        client: Optional LLMClient instance. Defaults to a new LLMClient().
+
+    Returns:
+        Validated VLMInvoice instance.
+    """
+    if client is None:
+        client = LLMClient()
+    return client.parse_invoice_vision(images_base64, prompt=prompt)

@@ -182,10 +182,11 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     start_time = time.time()
 
+    workers = max(1, args.workers)
     # Initialize components
     cache = None if args.no_cache else LLMCache(cache_dir="cache")
-    llm_client = LLMClient()
-    ocr_engine = OCREngine()
+    llm_client = LLMClient(concurrency=workers)
+    ocr_engine = None
 
     # 1. Dry-run branch: halts after Leak Guard, prints masked payload to stdout, DO NOT call LLM
     if args.dry_run:
@@ -224,26 +225,18 @@ def main(argv: Optional[List[str]] = None) -> int:
     workers = max(1, args.workers)
     invoices: List[Optional[CanonicalInvoice]] = [None] * len(files)
 
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        future_to_idx = {
-            executor.submit(
-                process_invoice_file,
-                file_path=f,
-                llm_client=llm_client,
-                ocr_engine=ocr_engine,
-                cache=cache,
-                target_month=args.month,
-                dry_run=False,
-            ): idx
-            for idx, f in enumerate(files)
-        }
-
+    if workers == 1 or len(files) == 1:
         with tqdm(total=len(files), desc="Processing invoices", unit="file") as pbar:
-            for future in as_completed(future_to_idx):
-                idx = future_to_idx[future]
-                f = files[idx]
+            for idx, f in enumerate(files):
                 try:
-                    inv = future.result()
+                    inv = process_invoice_file(
+                        file_path=f,
+                        llm_client=llm_client,
+                        ocr_engine=ocr_engine,
+                        cache=cache,
+                        target_month=args.month,
+                        dry_run=False,
+                    )
                 except Exception as exc:
                     logger.error("Processing failed for file %s: %s", f.name, type(exc).__name__)
                     inv = CanonicalInvoice(
@@ -260,6 +253,43 @@ def main(argv: Optional[List[str]] = None) -> int:
                     exporter.write_failure(inv.source_file, err_code)
 
                 pbar.update(1)
+    else:
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            future_to_idx = {
+                executor.submit(
+                    process_invoice_file,
+                    file_path=f,
+                    llm_client=llm_client,
+                    ocr_engine=ocr_engine,
+                    cache=cache,
+                    target_month=args.month,
+                    dry_run=False,
+                ): idx
+                for idx, f in enumerate(files)
+            }
+
+            with tqdm(total=len(files), desc="Processing invoices", unit="file") as pbar:
+                for future in as_completed(future_to_idx):
+                    idx = future_to_idx[future]
+                    f = files[idx]
+                    try:
+                        inv = future.result()
+                    except Exception as exc:
+                        logger.error("Processing failed for file %s: %s", f.name, type(exc).__name__)
+                        inv = CanonicalInvoice(
+                            source_file=str(f),
+                            source_sha256="",
+                            status=InvoiceStatus.FAILED,
+                            review_reasons=["worker_error"],
+                        )
+
+                    invoices[idx] = inv
+                    exporter.write_invoice(inv)
+                    if inv.status == InvoiceStatus.FAILED:
+                        err_code = inv.review_reasons[0] if inv.review_reasons else "UNKNOWN_ERROR"
+                        exporter.write_failure(inv.source_file, err_code)
+
+                    pbar.update(1)
 
     collected_invoices: List[CanonicalInvoice] = [inv for inv in invoices if inv is not None]
 

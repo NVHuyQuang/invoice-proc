@@ -10,14 +10,16 @@ PLAN 1.1-1.2:
 """
 
 from pathlib import Path
-from typing import Tuple, Optional
+from typing import Tuple, Optional, List, Union
+import base64
 import hashlib
+import io
 import warnings
 import numpy as np
 from PIL import Image, ImageOps
 import pillow_heif
 
-from config import MAX_IMAGE_DIMENSION
+from config import MAX_IMAGE_DIMENSION, PDF_RENDER_DPI
 
 # Register HEIF opener with Pillow once
 pillow_heif.register_heif_opener()
@@ -168,3 +170,80 @@ def load_image(file_path: Path, max_dimension: Optional[int] = None) -> Tuple[np
         raise
     except Exception as e:
         raise ValueError(f"Corrupted or invalid image file {path}: {e}") from e
+
+
+def load_document_images(
+    file_path: Union[str, Path],
+    dpi: int = PDF_RENDER_DPI,
+    max_dimension: int = MAX_IMAGE_DIMENSION,
+) -> List[str]:
+    """Load all pages of a PDF or image document and return them as base64 JPEG strings.
+
+    Args:
+        file_path: Path to target document (PDF, PNG, JPG, WEBP, HEIC).
+        dpi: Rendering DPI for PDF documents (default 150).
+        max_dimension: Maximum dimension cap for images (default 2048).
+
+    Returns:
+        List of base64-encoded JPEG image strings.
+
+    Raises:
+        FileNotFoundError: If file does not exist.
+        ValueError: If file is unsupported or corrupted.
+    """
+    path = Path(file_path)
+    if not path.is_file():
+        raise FileNotFoundError(f"File not found: {path}")
+
+    file_type = detect_file_type(path)
+    if file_type == "pdf":
+        import pymupdf as fitz
+        images_b64: List[str] = []
+        try:
+            doc = fitz.open(path)
+            for page in doc:
+                zoom = dpi / 72.0
+                w_est = page.rect.width * zoom
+                h_est = page.rect.height * zoom
+                max_d = max(w_est, h_est)
+                scale = zoom * (max_dimension / max_d) if max_d > max_dimension else zoom
+
+                mat = fitz.Matrix(scale, scale)
+                pix = page.get_pixmap(matrix=mat, alpha=False)
+                pil_img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+
+                buf = io.BytesIO()
+                pil_img.save(buf, format="JPEG", quality=85, optimize=True)
+                images_b64.append(base64.b64encode(buf.getvalue()).decode("utf-8"))
+            doc.close()
+            return images_b64
+        except Exception as exc:
+            raise ValueError(f"Failed to process PDF {path}: {exc}") from exc
+
+    elif file_type in SUPPORTED_IMAGE_TYPES:
+        try:
+            with Image.open(path) as raw_img:
+                img = ImageOps.exif_transpose(raw_img)
+                if "A" in img.getbands() or img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+                    rgba = img.convert("RGBA")
+                    bg = Image.new("RGBA", rgba.size, (255, 255, 255, 255))
+                    img = Image.alpha_composite(bg, rgba).convert("RGB")
+                elif img.mode != "RGB":
+                    img = img.convert("RGB")
+
+                width, height = img.size
+                max_d = max(width, height)
+                if max_d > max_dimension:
+                    scale = max_dimension / max_d
+                    new_w = max(1, int(round(width * scale)))
+                    new_h = max(1, int(round(height * scale)))
+                    img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+
+                buf = io.BytesIO()
+                img.save(buf, format="JPEG", quality=85, optimize=True)
+                return [base64.b64encode(buf.getvalue()).decode("utf-8")]
+        except Exception as exc:
+            raise ValueError(f"Failed to process image {path}: {exc}") from exc
+
+    else:
+        raise ValueError(f"Unsupported document format: '{file_type}' for file {path}")

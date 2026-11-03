@@ -5,8 +5,8 @@ Frozen at Wave 0.
 
 from decimal import Decimal
 from enum import Enum
-from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, field_validator, ConfigDict
+from typing import Optional, List, Dict, Any, Union
+from pydantic import BaseModel, Field, field_validator, ConfigDict, model_validator
 import re
 
 from config import Category, SCHEMA_VERSION
@@ -213,3 +213,221 @@ class CanonicalInvoice(BaseModel):
             return obj
 
         return convert_decimals(data)
+
+
+# ---------------------------------------------------------
+# Multimodal VLM Direct Output Schemas & Converter
+# ---------------------------------------------------------
+
+class VLMLineItem(BaseModel):
+    item_name: str = ""
+    qty: Optional[Union[str, float, int, Decimal]] = None
+    unit_price: Optional[Union[str, float, int, Decimal]] = None
+    line_total: Optional[Union[str, float, int, Decimal]] = None
+    unit: Optional[str] = None
+    kind: LineItemKind = LineItemKind.GOODS
+    checkable: bool = True
+
+
+class VLMCharge(BaseModel):
+    description: str = ""
+    amount: Optional[Union[str, float, int, Decimal]] = None
+
+
+class VLMSummary(BaseModel):
+    subtotal: Optional[Union[str, float, int, Decimal]] = None
+    tax: Optional[Union[str, float, int, Decimal]] = None
+    discount: Optional[Union[str, float, int, Decimal]] = None
+    shipping: Optional[Union[str, float, int, Decimal]] = None
+    tip: Optional[Union[str, float, int, Decimal]] = None
+    fees: List[Union[str, float, int, Decimal]] = Field(default_factory=list)
+    grand_total: Optional[Union[str, float, int, Decimal]] = None
+    amount_due: Optional[Union[str, float, int, Decimal]] = None
+
+    @field_validator("fees", mode="before")
+    @classmethod
+    def normalize_fees(cls, v: Any) -> List[Any]:
+        if v is None:
+            return []
+        if isinstance(v, (int, float, Decimal)):
+            return [] if v == 0 else [v]
+        if isinstance(v, str):
+            if v.strip() in ("", "0", "0.0", "0.00"):
+                return []
+            return [v]
+        if isinstance(v, list):
+            return v
+        return []
+
+
+class VLMInvoice(BaseModel):
+    doc_type: DocType = DocType.GOODS_INVOICE
+    vendor_name: str = ""
+    invoice_no: Optional[str] = None
+    invoice_date: Optional[str] = None
+    due_date: Optional[str] = None
+    currency: str = "USD"
+    category: Category = Category.OTHER
+    line_items: List[VLMLineItem] = Field(default_factory=list)
+    charges: List[VLMCharge] = Field(default_factory=list)
+    summary: VLMSummary = Field(default_factory=VLMSummary)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_fields(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            if not data.get("vendor_name"):
+                for alias in ("vendor", "supplier", "seller", "merchant", "biller", "issuer", "company"):
+                    if alias in data and data[alias]:
+                        v = data[alias]
+                        if isinstance(v, dict):
+                            data["vendor_name"] = str(v.get("name", "") or v.get("vendor_name", "") or "")
+                        elif isinstance(v, str):
+                            data["vendor_name"] = v
+                        if data.get("vendor_name"):
+                            break
+            if not data.get("invoice_no"):
+                for alias in (
+                    "invoice_number", "inv_no", "inv_number", "receipt_number", "receipt_no",
+                    "bill_number", "bill_no", "account_number", "account_no", "acc_no", "account"
+                ):
+                    if alias in data and data[alias]:
+                        data["invoice_no"] = str(data[alias])
+                        break
+            if not data.get("invoice_date"):
+                for alias in ("bill_date", "billing_date", "statement_date", "date"):
+                    if alias in data and data[alias]:
+                        data["invoice_date"] = str(data[alias])
+                        break
+        return data
+
+
+def vlm_to_canonical(
+    vlm: VLMInvoice,
+    source_file: str,
+    source_sha256: str,
+    date_locale: Optional[str] = None,
+) -> CanonicalInvoice:
+    """Convert raw VLMInvoice output into validated CanonicalInvoice.
+
+    Sanitizes numbers and currency strings using core.numparse.parse_number,
+    parses dates to ISO YYYY-MM-DD via core.rehydrator._parse_date,
+    and sets initial status to REVIEW_NEEDED for subsequent math validation.
+    """
+    from core.numparse import parse_number, AmbiguousNumberError
+    from core.rehydrator import _parse_date
+    from config import DEFAULT_DATE_LOCALE
+
+    eff_date_locale = date_locale or DEFAULT_DATE_LOCALE
+    review_reasons: List[str] = []
+
+    def _convert_num(val: Any, neg_hint: bool = False) -> Optional[Decimal]:
+        if val is None:
+            return None
+        if isinstance(val, Decimal):
+            return val
+        if isinstance(val, (int, float)):
+            return Decimal(str(val))
+        s = str(val).strip()
+        if not s or s.lower() in ("none", "null", "n/a"):
+            return None
+        try:
+            return parse_number(s, neg_hint=neg_hint)
+        except AmbiguousNumberError:
+            if "ambiguous_number" not in review_reasons:
+                review_reasons.append("ambiguous_number")
+            try:
+                cleaned = re.sub(r"[^\d.-]", "", s)
+                if cleaned:
+                    return Decimal(cleaned)
+            except Exception:
+                pass
+            return None
+        except Exception:
+            try:
+                cleaned = re.sub(r"[^\d.-]", "", s)
+                if cleaned:
+                    return Decimal(cleaned)
+            except Exception:
+                pass
+            return None
+
+    # Line items
+    canonical_items: List[CanonicalLineItem] = []
+    for it in vlm.line_items:
+        q = _convert_num(it.qty)
+        p = _convert_num(it.unit_price)
+        t = _convert_num(it.line_total)
+        canonical_items.append(
+            CanonicalLineItem(
+                item_name=it.item_name,
+                qty=q,
+                unit_price=p,
+                line_total=t,
+                unit=it.unit,
+                kind=it.kind,
+                checkable=it.checkable,
+            )
+        )
+
+    # Charges
+    canonical_charges: List[CanonicalCharge] = []
+    for ch in vlm.charges:
+        amt = _convert_num(ch.amount)
+        if amt is not None:
+            canonical_charges.append(
+                CanonicalCharge(
+                    description=ch.description,
+                    amount=amt,
+                )
+            )
+
+    # Dates
+    is_us_locale = (vlm.currency in ("USD", "$") or eff_date_locale == "MM/DD")
+    inv_date: Optional[str] = None
+    if vlm.invoice_date:
+        parsed_d, is_ambig = _parse_date(str(vlm.invoice_date), default_locale=eff_date_locale)
+        inv_date = parsed_d
+        if is_ambig and not is_us_locale and "ambiguous_date" not in review_reasons:
+            review_reasons.append("ambiguous_date")
+
+    due_date: Optional[str] = None
+    if vlm.due_date:
+        parsed_due, is_due_ambig = _parse_date(str(vlm.due_date), default_locale=eff_date_locale)
+        due_date = parsed_due
+        if is_due_ambig and not is_us_locale and "ambiguous_date" not in review_reasons:
+            review_reasons.append("ambiguous_date")
+
+    # Summary
+    sub = _convert_num(vlm.summary.subtotal)
+    tax = _convert_num(vlm.summary.tax)
+    disc = _convert_num(vlm.summary.discount)
+    ship = _convert_num(vlm.summary.shipping)
+    tip = _convert_num(vlm.summary.tip)
+    fees = [_convert_num(f) for f in vlm.summary.fees if _convert_num(f) is not None]
+    gt = _convert_num(vlm.summary.grand_total)
+    ad = _convert_num(vlm.summary.amount_due)
+
+    return CanonicalInvoice(
+        source_file=source_file,
+        source_sha256=source_sha256,
+        status=InvoiceStatus.REVIEW_NEEDED,
+        doc_type=vlm.doc_type,
+        vendor_name=vlm.vendor_name,
+        invoice_no=vlm.invoice_no,
+        invoice_date=inv_date,
+        due_date=due_date,
+        currency=vlm.currency,
+        category=vlm.category,
+        line_items=canonical_items,
+        charges=canonical_charges,
+        subtotal=sub,
+        tax=tax,
+        discount=disc,
+        shipping=ship,
+        tip=tip,
+        fees=[f for f in fees if f is not None],
+        grand_total=gt,
+        amount_due=ad,
+        review_reasons=review_reasons,
+    )

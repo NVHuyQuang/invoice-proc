@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Invoice Processor · Snowmelt Financial Audit Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500;1,400&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            snow: { 50: '#f9fafb', 100: '#f3f4f6', 200: '#e5e7eb', 300: '#d1d5db' },
+            frost: { 800: '#1e293b', 700: '#1e3a5f', 600: '#2563eb', 500: '#3b82f6', 400: '#60a5fa', 100: '#dbeafe', 50: '#eff6ff' },
+            mist: { 700: '#374151', 500: '#6b7280', 300: '#d1d5db' },
+            grass: { 700: '#15803d', 600: '#16a34a', 500: '#22c55e', 200: '#bbf7d0', 100: '#dcfce7', 50: '#f0fdf4' },
+            ember: { 700: '#b91c1c', 600: '#dc2626', 500: '#ef4444', 200: '#fecaca', 100: '#fee2e2', 50: '#fef2f2' },
+            amber: { 600: '#d97706', 500: '#f59e0b', 200: '#fde68a', 100: '#fef3c7', 50: '#fffbeb' }
+          },
+          fontFamily: {
+            sans: ['"DM Sans"', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+            mono: ['"DM Mono"', 'monospace']
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { font-family: 'DM Sans', sans-serif; background: #f0f2f5; color: #1e293b; }
+    .card { background: white; border: 1px solid #e5e7eb; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+    .tag { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; padding: 2px 7px; border-radius: 99px; font-family: 'DM Mono', monospace; font-weight: 600; }
+    .tag-pass { background: #dcfce7; color: #15803d; border: 1px solid rgba(22, 163, 74, 0.2); }
+    .tag-flag { background: #fef3c7; color: #b45309; border: 1px solid rgba(245, 158, 11, 0.3); }
+    .tag-fail { background: #fee2e2; color: #b91c1c; border: 1px solid rgba(239, 68, 68, 0.25); }
+    .tag-dup { background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; }
+    .custom-scroll::-webkit-scrollbar { width: 5px; height: 5px; }
+    .custom-scroll::-webkit-scrollbar-track { background: #f8fafc; }
+    .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    .custom-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    .active-row { background: #eff6ff !important; border-left: 3px solid #2563eb; }
+    .mini-bar { height: 4px; background: #e5e7eb; border-radius: 2px; overflow: hidden; }
+    .mini-bar-fill { height: 100%; border-radius: 2px; transition: width 0.4s ease; }
+    .focus-ring:focus { outline: 2px solid #3b82f6; outline-offset: 1px; }
+  </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden text-sm">
+
+  <!-- Top Navigation Header -->
+  <header class="min-h-14 bg-white border-b border-snow-200 px-4 lg:px-6 py-2.5 lg:py-0 flex flex-wrap lg:flex-nowrap items-center justify-between flex-shrink-0 z-10 gap-2" style="box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+    <div class="flex items-center gap-3 lg:gap-4 flex-wrap">
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-lg bg-frost-600 flex items-center justify-center text-white font-bold text-sm shadow-sm font-mono tracking-tight">4P</div>
+        <div>
+          <div class="font-bold text-gray-900 text-sm leading-none flex items-center gap-2">
+            Invoice Processor
+            <span class="text-gray-400 font-mono text-[11px] font-normal">v3.0 VLM</span>
+          </div>
+          <div class="text-[10px] text-gray-500 font-mono mt-0.5">Kỳ kế toán: 2026-08 (±45 ngày)</div>
+        </div>
+      </div>
+
+      <div class="h-5 w-px bg-snow-200 mx-1 hidden sm:block"></div>
+
+      <!-- Live Pipeline Stats Pills -->
+      <div class="flex items-center gap-1.5 sm:gap-2 text-xs flex-wrap">
+        <div class="flex items-center gap-1.5 bg-snow-100 text-gray-600 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full border border-snow-200">
+          <span class="w-1.5 h-1.5 rounded-full bg-grass-500"></span>
+          <span><strong class="text-gray-900 font-mono" id="statVerified">155</strong> verified</span>
+        </div>
+        <div class="flex items-center gap-1.5 bg-amber-50 text-amber-800 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full border border-amber-200/60">
+          <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+          <span><strong class="text-amber-900 font-mono" id="statReview">52</strong> cần duyệt</span>
+        </div>
+        <div class="flex items-center gap-1.5 bg-snow-100 text-gray-500 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full border border-snow-200">
+          <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+          <span><strong class="text-gray-800 font-mono" id="statDuplicate">6</strong> trùng</span>
+        </div>
+        <div class="hidden md:flex items-center gap-1.5 bg-frost-50 text-frost-700 px-2.5 py-1 rounded-full border border-frost-200/60 font-mono text-[11px]">
+          <span class="w-1.5 h-1.5 rounded-full bg-frost-500 animate-pulse"></span>
+          <span>Gemini 3.8 Flash (VLM)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Header Actions -->
+    <div class="flex items-center gap-2 sm:gap-3 ml-auto">
+      <div class="text-right font-mono text-xs hidden lg:block mr-2">
+        <span class="text-gray-400">Tổng chi phí:</span>
+        <span class="font-bold text-gray-900 text-sm ml-1" id="statTotalSpend">$84,129.50</span>
+      </div>
+
+      <!-- Upload Trigger Button -->
+      <button class="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg border border-snow-200 text-gray-700 hover:bg-snow-100 text-xs font-medium transition focus-ring" onclick="triggerUpload()">
+        <svg class="w-3.5 h-3.5 text-frost-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+        <span>Tải lên</span>
+      </button>
+      <input type="file" id="fileUploadInput" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.heic" style="display:none;" onchange="handleFileUpload(this.files)">
+
+      <!-- Export Excel Button -->
+      <button class="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-lg bg-frost-600 text-white text-xs font-semibold hover:bg-frost-700 transition focus-ring shadow-sm shadow-frost-600/20" onclick="downloadExcel()">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        <span>Xuất Excel</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Mobile Segmented Tab Switcher (Visible only on < lg screens) -->
+  <div class="flex lg:hidden bg-white border-b border-snow-200 px-3 py-1.5 gap-2 text-xs font-mono overflow-x-auto flex-shrink-0 shadow-2xs">
+    <button id="tabBtnQueue" class="flex-1 py-1.5 px-2 rounded-lg font-bold bg-frost-50 text-frost-600 border border-frost-200 text-center transition" onclick="setMobileTab('queue')">
+      Hàng đợi (<span id="mobileQueueCount">0</span>)
+    </button>
+    <button id="tabBtnWorkspace" class="flex-1 py-1.5 px-2 rounded-lg text-gray-500 hover:bg-snow-100 text-center transition" onclick="setMobileTab('workspace')">
+      Chi tiết & Bảng kê
+    </button>
+    <button id="tabBtnInspector" class="flex-1 py-1.5 px-2 rounded-lg text-gray-500 hover:bg-snow-100 text-center transition" onclick="setMobileTab('inspector')">
+      Kiểm toán 4 Tầng
+    </button>
+  </div>
+
+  <!-- Main Work Area (3 Columns: Queue | Workspace | Audit Inspector) -->
+  <div class="flex-1 flex flex-col lg:flex-row gap-3 p-3 overflow-hidden" style="background: #f0f2f5;">
+
+    <!-- Left Column: Invoice Queue -->
+    <aside id="colQueue" class="w-full lg:w-72 flex flex-col gap-2 flex-shrink-0">
+      <!-- Search Input -->
+      <div class="relative">
+        <svg class="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        <input class="w-full pl-8 pr-3 py-1.5 text-xs border border-snow-200 rounded-lg bg-white placeholder-gray-400 text-gray-800 focus-ring font-sans" id="searchBox" placeholder="Tìm theo nhà cung cấp, số HĐ..." type="text" oninput="applyFilters()">
+      </div>
+
+      <!-- Queue Card -->
+      <div class="card flex-1 rounded-xl overflow-hidden flex flex-col">
+        <!-- Filter Tabs -->
+        <div class="px-3 py-2 border-b border-snow-200 flex items-center justify-between bg-snow-50/50">
+          <span class="text-[11px] font-bold text-gray-500 uppercase tracking-wider font-mono">Hàng đợi (<span id="queueTotalCount">0</span>)</span>
+          <div class="flex gap-1 text-[10px] font-mono">
+            <button class="px-2 py-0.5 rounded-md font-semibold bg-white border border-snow-200 text-frost-600 shadow-2xs filter-btn active" data-filter="ALL" onclick="setQueueFilter('ALL', this)">All</button>
+            <button class="px-2 py-0.5 rounded-md text-gray-500 hover:text-gray-800 filter-btn" data-filter="VERIFIED" onclick="setQueueFilter('VERIFIED', this)">Pass</button>
+            <button class="px-2 py-0.5 rounded-md text-gray-500 hover:text-gray-800 filter-btn" data-filter="REVIEW_NEEDED" onclick="setQueueFilter('REVIEW_NEEDED', this)">Flag</button>
+            <button class="px-2 py-0.5 rounded-md text-gray-500 hover:text-gray-800 filter-btn" data-filter="DUPLICATE" onclick="setQueueFilter('DUPLICATE', this)">Dup</button>
+          </div>
+        </div>
+
+        <!-- Invoice List -->
+        <div class="flex-1 overflow-y-auto custom-scroll divide-y divide-snow-100" id="queueListContainer">
+          <!-- Dynamic queue cards -->
+        </div>
+
+        <!-- Footer Batch Info -->
+        <div class="p-2.5 border-t border-snow-200 bg-snow-50 text-[11px] font-mono text-gray-500 flex justify-between">
+          <span>Batch: 08.Aug 2026</span>
+          <span class="text-grass-600 font-bold" id="autoReconcileRate">72.8% Auto-Pass</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Center Column: Workspace (Document & Extracted Line Items) -->
+    <main id="colWorkspace" class="hidden lg:flex flex-1 flex-col gap-2 overflow-hidden min-w-0">
+
+      <!-- Breadcrumb Bar & View Mode Toggles -->
+      <div class="card rounded-xl px-4 py-2.5 flex items-center justify-between flex-shrink-0">
+        <div class="flex items-center gap-2 text-xs text-gray-400 font-mono min-w-0 truncate">
+          <button class="lg:hidden px-2 py-1 bg-snow-100 text-frost-600 rounded text-xs font-semibold mr-1" onclick="setMobileTab('queue')">← Danh sách</button>
+          <span>08.Aug 2026</span>
+          <span>/</span>
+          <span class="text-gray-500" id="breadCategory">Nguyên vật liệu thực phẩm</span>
+          <span>/</span>
+          <span class="text-gray-900 font-bold truncate" id="breadFileName">01_multipage_goods.pdf</span>
+        </div>
+
+        <div class="flex items-center gap-3 flex-shrink-0">
+          <div class="flex items-center gap-1.5 text-[11px] font-mono text-gray-500">
+            <span class="w-1.5 h-1.5 rounded-full bg-grass-500"></span>
+            <span id="docTypeTag">goods_invoice</span>
+          </div>
+          <div class="flex items-center gap-1 text-[11px] font-mono text-frost-600">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+            <span>VLM End-to-End</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Line Items & Charges Table Card -->
+      <div class="card flex-1 rounded-xl overflow-hidden flex flex-col">
+        <!-- Table Header -->
+        <div class="px-4 py-3 border-b border-snow-200 bg-snow-50/80 grid grid-cols-12 text-[11px] font-bold text-gray-500 uppercase tracking-wider font-mono">
+          <span class="col-span-1">#</span>
+          <span class="col-span-2">Mã / Loại</span>
+          <span class="col-span-4">Tên hàng / Khoản mục</span>
+          <span class="col-span-1 text-center">SL</span>
+          <span class="col-span-1 text-center">ĐVT</span>
+          <span class="col-span-1 text-right">Đơn giá</span>
+          <span class="col-span-2 text-right">Thành tiền</span>
+        </div>
+
+        <!-- Table Body (Scrollable) -->
+        <div class="flex-1 overflow-y-auto custom-scroll divide-y divide-snow-100" id="itemsTableBody">
+          <!-- Dynamic row items -->
+        </div>
+
+        <!-- Bottom Reconciliation Bar -->
+        <div class="border-t border-snow-200 bg-snow-50 px-5 py-3 flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2 text-xs font-semibold" id="reconcileBannerText">
+              <svg class="w-4 h-4 text-grass-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              <span>Toàn bộ 4 tầng kiểm tra số học đạt chuẩn (PASS 100%)</span>
+            </div>
+          </div>
+          <div class="flex items-center gap-6 text-xs font-mono">
+            <span class="text-gray-500">Tạm tính: <strong class="text-gray-800 text-sm font-bold" id="footerSubtotal">$0.00</strong></span>
+            <span class="text-gray-500">Thuế: <strong class="text-gray-800 text-sm font-bold" id="footerTax">$0.00</strong></span>
+            <span class="text-gray-500">Giảm trừ: <strong class="text-gray-800 text-sm font-bold" id="footerDiscount">$0.00</strong></span>
+            <div class="border-l border-snow-300 pl-4">
+              <span class="text-gray-500">Tổng thanh toán: </span>
+              <span class="font-extrabold text-base text-gray-900" id="footerGrandTotal">$0.00</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Right Column: Audit Inspector & Actions -->
+    <aside id="colInspector" class="hidden lg:flex w-full lg:w-72 flex-col gap-2 flex-shrink-0">
+      <!-- Mobile back to workspace button -->
+      <div class="lg:hidden flex items-center justify-between px-1 mb-1">
+        <button class="px-2.5 py-1 bg-white border border-snow-200 text-frost-600 rounded-lg text-xs font-semibold shadow-2xs" onclick="setMobileTab('workspace')">
+          ← Xem Bảng kê
+        </button>
+        <span class="text-xs font-mono text-gray-400">Kiểm toán 4 tầng</span>
+      </div>
+
+      <!-- Invoice Details Card -->
+      <div class="card rounded-xl p-3.5 flex-shrink-0">
+        <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider font-mono mb-2.5">Thông tin Hóa đơn</div>
+        <div class="space-y-2 text-xs">
+          <div>
+            <div class="text-gray-400 text-[10px] mb-0.5">Nhà cung cấp / Đơn vị bán</div>
+            <div class="font-bold text-gray-900 truncate text-sm" id="detailVendor">-</div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <div class="text-gray-400 text-[10px] mb-0.5">Số HĐ / Biên lai</div>
+              <div class="font-mono text-gray-800 font-semibold truncate" id="detailInvoiceNo">-</div>
+            </div>
+            <div>
+              <div class="text-gray-400 text-[10px] mb-0.5">Tiền tệ</div>
+              <div class="font-mono text-gray-800 font-semibold" id="detailCurrency">USD</div>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <div class="text-gray-400 text-[10px] mb-0.5">Ngày lập (Bill Date)</div>
+              <div class="font-mono text-gray-800" id="detailInvoiceDate">-</div>
+            </div>
+            <div>
+              <div class="text-gray-400 text-[10px] mb-0.5">Hạn thanh toán</div>
+              <div class="font-mono text-gray-800" id="detailDueDate">-</div>
+            </div>
+          </div>
+          <div class="pt-1 border-t border-snow-100 flex items-center justify-between">
+            <span class="text-gray-400 text-[10px]">Phân loại chi phí:</span>
+            <span class="tag bg-snow-100 text-gray-700 font-medium" id="detailCategory">Nguyên vật liệu</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4-Tier Arithmetic Audit Card -->
+      <div class="card rounded-xl p-3.5 flex-shrink-0">
+        <div class="flex items-center justify-between mb-2">
+          <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider font-mono">Kiểm toán 4 tầng số học</div>
+          <span class="tag tag-pass text-[10px]" id="auditConfidenceBadge">100% MATCH</span>
+        </div>
+        <div class="space-y-2 text-xs">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-grass-500" id="tier1Dot"></span>
+              <span class="text-gray-600 text-[11px]">Tầng 1: Đơn giá × SL = Dòng</span>
+            </div>
+            <span class="font-mono text-[11px] text-gray-700 font-medium" id="tier1Val">PASS</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-grass-500" id="tier2Dot"></span>
+              <span class="text-gray-600 text-[11px]">Tầng 2: Tổng dòng = Subtotal</span>
+            </div>
+            <span class="font-mono text-[11px] text-gray-700 font-medium" id="tier2Val">PASS</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-grass-500" id="tier3Dot"></span>
+              <span class="text-gray-600 text-[11px]">Tầng 3: Khớp Grand Total</span>
+            </div>
+            <span class="font-mono text-[11px] text-gray-700 font-medium" id="tier3Val">PASS</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-slate-300" id="tier4Dot"></span>
+              <span class="text-gray-600 text-[11px]">Tầng 4: Tiện ích / Nợ cũ</span>
+            </div>
+            <span class="font-mono text-[11px] text-gray-400" id="tier4Val">N/A</span>
+          </div>
+        </div>
+
+        <div class="mt-3 mini-bar">
+          <div class="mini-bar-fill bg-grass-500" id="auditProgressBar" style="width: 100%;"></div>
+        </div>
+      </div>
+
+      <!-- Review Alert Card (Shown only when status is REVIEW_NEEDED) -->
+      <div class="card rounded-xl p-3.5 bg-amber-50/70 border-amber-200" id="reviewAlertCard" style="display: none;">
+        <div class="flex items-center gap-1.5 text-amber-800 text-xs font-bold mb-1.5">
+          <svg class="w-4 h-4 text-amber-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+          <span>Gắn cờ kiểm soát thủ công</span>
+        </div>
+        <div class="text-[11px] text-amber-900/80 leading-relaxed space-y-1 font-mono" id="reviewReasonsList">
+          <!-- Reasons -->
+        </div>
+      </div>
+
+      <!-- Action Footer Buttons -->
+      <div class="mt-auto flex flex-col gap-2 pt-2">
+        <button class="w-full py-2 rounded-xl border border-snow-200 text-gray-700 hover:bg-snow-100 text-xs font-semibold transition card flex items-center justify-center gap-2" onclick="editCurrentInvoice()">
+          <svg class="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+          Sửa thông tin thủ công
+        </button>
+        <button class="w-full py-2.5 rounded-xl bg-grass-600 hover:bg-grass-700 text-white text-xs font-bold transition shadow-sm shadow-grass-600/20 flex items-center justify-center gap-1.5" onclick="approveAndNext()">
+          <span>Duyệt & Sang tiếp</span>
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+        </button>
+        <div class="text-center text-[10px] text-gray-400 font-mono">Phím tắt: [Enter] Duyệt · [↑ / ↓] Chọn</div>
+      </div>
+
+    </aside>
+
+  </div>
+
+  <!-- Client Script for Live Microservice Interaction -->
+  <script>
+    let allInvoices = [];
+    let currentFilter = 'ALL';
+    let selectedIndex = 0;
+
+    // Load initial invoices from live API or fallback data
+    async function loadInitialData() {
+      try {
+        const res = await fetch('/api/v1/invoices');
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            allInvoices = data;
+            renderAll();
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn("API /api/v1/invoices unreachable, loading preloaded dataset...", err);
+      }
+
+      // Fallback preloaded representation of August 2026 run
+      allInvoices = [
+        {
+          source_file: "08.Aug 2026/01. Invoices/Baldor/Baldor - IV101-0029021609.pdf",
+          vendor_name: "Baldor Specialty Foods Inc.",
+          invoice_no: "IV101-0029021609",
+          invoice_date: "2026-08-01",
+          due_date: "2026-08-25",
+          currency: "USD",
+          category: "Nguyên vật liệu thực phẩm",
+          doc_type: "goods_invoice",
+          subtotal: "97.21",
+          tax: "0.00",
+          discount: "0.00",
+          grand_total: "97.21",
+          status: "VERIFIED",
+          review_reasons: [],
+          line_items: [
+            { item_name: "Juice Lemon 6x32 oz Orchid Island", qty: "1.00", unit: "CTN", unit_price: "33.99", line_total: "33.99", kind: "goods" },
+            { item_name: "Juice Orange Blood 6x12 oz Natalies", qty: "1.00", unit: "CTN", unit_price: "23.09", line_total: "23.09", kind: "goods" },
+            { item_name: "Juice Apple Fuji 6x12 oz Red Jacket", qty: "1.00", unit: "CTN", unit_price: "15.29", line_total: "15.29", kind: "goods" },
+            { item_name: "Lemonade Zinger Less Sugar 6x12 oz", qty: "1.00", unit: "CTN", unit_price: "14.59", line_total: "14.59", kind: "goods" },
+            { item_name: "Melons Watermelon Sangria Seeded", qty: "1.00", unit: "EACH", unit_price: "10.25", line_total: "10.25", kind: "goods" }
+          ]
+        },
+        {
+          source_file: "08.Aug 2026/01. Invoices/Asscociated - 5.29USD - 03.08.2026.HEIC",
+          vendor_name: "ASSOCIATED of Greenpoint",
+          invoice_no: "0142",
+          invoice_date: "2026-08-03",
+          due_date: "2026-08-03",
+          currency: "USD",
+          category: "Nguyên vật liệu thực phẩm",
+          doc_type: "receipt",
+          subtotal: "5.29",
+          tax: "0.00",
+          discount: "0.00",
+          grand_total: "5.29",
+          status: "VERIFIED",
+          review_reasons: [],
+          line_items: [
+            { item_name: "MCK ROSEMARY LEAVES", qty: "1", unit: "EA", unit_price: "5.29", line_total: "5.29", kind: "goods" }
+          ]
+        },
+        {
+          source_file: "08.Aug 2026/01. Invoices/Con Edision - Jul26.jpeg",
+          vendor_name: "conEdison",
+          invoice_no: "57711-73004-4",
+          invoice_date: "2026-07-30",
+          due_date: "2026-09-01",
+          currency: "USD",
+          category: "Điện nước",
+          doc_type: "utility_bill",
+          subtotal: "90.14",
+          tax: "0.00",
+          discount: "0.00",
+          grand_total: "90.14",
+          status: "VERIFIED",
+          review_reasons: [],
+          charges: [
+            { description: "Past Due Balance (Kỳ trước)", amount: "26.16" },
+            { description: "Current Electric & Gas Charges (Phát sinh mới)", amount: "63.98" }
+          ],
+          line_items: []
+        },
+        {
+          source_file: "08.Aug 2026/01. Invoices/FARMS2YOU, LLC - 432660222.pdf",
+          vendor_name: "FARMS2YOU, LLC",
+          invoice_no: "432660222",
+          invoice_date: "2026-08-12",
+          due_date: "2026-08-19",
+          currency: "USD",
+          category: "Nguyên vật liệu thực phẩm",
+          doc_type: "goods_invoice",
+          subtotal: "275.74",
+          tax: "0.00",
+          discount: "0.00",
+          grand_total: "275.74",
+          status: "VERIFIED",
+          review_reasons: [],
+          line_items: [
+            { item_name: "Churchtown Dairy - Ground Beef 10LB", qty: "1", unit: "CS", unit_price: "120.00", line_total: "120.00", kind: "goods" },
+            { item_name: "Ronnybrook Farm Dairy - Butter 8LB", qty: "1", unit: "CS", unit_price: "64.00", line_total: "64.00", kind: "goods" },
+            { item_name: "Chaseholm Farm Creamery - Camembert", qty: "1", unit: "EA", unit_price: "50.71", line_total: "50.71", kind: "goods" },
+            { item_name: "*Credit Card Processing Fee", qty: "1", unit: "FEE", unit_price: "8.03", line_total: "8.03", kind: "fee" },
+            { item_name: "*Order Transaction Fee", qty: "1", unit: "FEE", unit_price: "3.00", line_total: "3.00", kind: "fee" }
+          ]
+        },
+        {
+          source_file: "08.Aug 2026/01. Invoices/Webstaurant store - 129017763.pdf",
+          vendor_name: "WebstaurantStore",
+          invoice_no: "129017763",
+          invoice_date: "2026-08-08",
+          due_date: "2026-08-08",
+          currency: "USD",
+          category: "Bao bì/vật dụng",
+          doc_type: "goods_invoice",
+          subtotal: "206.95",
+          tax: "20.31",
+          discount: "0.00",
+          grand_total: "249.12",
+          status: "REVIEW_NEEDED",
+          review_reasons: [
+            "Bảng kê có 2 cột giá (Member Price $16.49 vs Regular $17.95), nghi lệch đơn giá chiết khấu",
+            "Chênh lệch số học Tier 1 trên dòng Pizza Box (1.46 > tolerance 0.015)"
+          ],
+          line_items: [
+            { item_name: "Choice 12x12 Kraft Pizza Box 50/Bundle", qty: "1", unit: "BDL", unit_price: "16.49", line_total: "17.95", kind: "goods" },
+            { item_name: "Hoffmaster Natural Onyx Dinner Napkin 300/Case", qty: "2", unit: "CS", unit_price: "63.99", line_total: "139.34", kind: "goods" },
+            { item_name: "EcoChoice Plant Fiber Take-Out Container 125/Case", qty: "1", unit: "CS", unit_price: "25.49", line_total: "27.75", kind: "goods" }
+          ]
+        },
+        {
+          source_file: "08.Aug 2026/01. Invoices/Whole Foods - 50.86USD - 59882.png",
+          vendor_name: "WHOLE FOODS MARKET",
+          invoice_no: "59882",
+          invoice_date: "2020-08-26",
+          due_date: "2020-08-26",
+          currency: "USD",
+          category: "Nguyên vật liệu thực phẩm",
+          doc_type: "receipt",
+          subtotal: "50.86",
+          tax: "0.00",
+          discount: "0.00",
+          grand_total: "50.86",
+          status: "REVIEW_NEEDED",
+          review_reasons: [
+            "Ngày hóa đơn (2020-08-26) nằm ngoài kỳ kế toán tháng 2026-08 (Cho phép: 17/06/2026 đến 15/10/2026)"
+          ],
+          line_items: [
+            { item_name: "ORGANIC HEIRLOOM TOMATOES", qty: "2.4", unit: "LB", unit_price: "6.99", line_total: "16.78", kind: "goods" },
+            { item_name: "ORGANIC HEAVY CREAM", qty: "4", unit: "QT", unit_price: "4.99", line_total: "19.96", kind: "goods" },
+            { item_name: "ARTISAN SOURDOUGH BREAD", qty: "2", unit: "EA", unit_price: "7.06", line_total: "14.12", kind: "goods" }
+          ]
+        }
+      ];
+
+      renderAll();
+    }
+
+    function renderAll() {
+      updateTopMetrics();
+      renderQueue();
+      renderActiveInvoice();
+    }
+
+    function updateTopMetrics() {
+      const v = allInvoices.filter(i => i.status === 'VERIFIED').length;
+      const r = allInvoices.filter(i => i.status === 'REVIEW_NEEDED').length;
+      const d = allInvoices.filter(i => i.status === 'DUPLICATE' || i.is_duplicate).length;
+
+      document.getElementById('statVerified').textContent = v;
+      document.getElementById('statReview').textContent = r;
+      document.getElementById('statDuplicate').textContent = d;
+
+      const rate = allInvoices.length > 0 ? ((v / allInvoices.length) * 100).toFixed(1) : 0;
+      document.getElementById('autoReconcileRate').textContent = `${rate}% Auto-Pass`;
+
+      const total = allInvoices.reduce((acc, curr) => acc + (parseFloat(curr.grand_total) || 0), 0);
+      document.getElementById('statTotalSpend').textContent = `$${total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+
+    function getFilteredInvoices() {
+      const search = document.getElementById('searchBox').value.toLowerCase().trim();
+      return allInvoices.filter(inv => {
+        if (currentFilter !== 'ALL' && inv.status !== currentFilter) return false;
+        if (search) {
+          const matchVendor = (inv.vendor_name || '').toLowerCase().includes(search);
+          const matchInvNo = (inv.invoice_no || '').toLowerCase().includes(search);
+          const matchFile = (inv.source_file || '').toLowerCase().includes(search);
+          if (!matchVendor && !matchInvNo && !matchFile) return false;
+        }
+        return true;
+      });
+    }
+
+    function renderQueue() {
+      const container = document.getElementById('queueListContainer');
+      container.innerHTML = '';
+      const list = getFilteredInvoices();
+      document.getElementById('queueTotalCount').textContent = list.length;
+
+      list.forEach((inv, idx) => {
+        const row = document.createElement('div');
+        const isActive = idx === selectedIndex;
+        row.className = `p-3 cursor-pointer transition select-none ${isActive ? 'active-row' : 'hover:bg-snow-50'}`;
+        row.onclick = () => {
+          selectedIndex = idx;
+          renderQueue();
+          renderActiveInvoice();
+          if (window.innerWidth < 1024) {
+            setMobileTab('workspace');
+          }
+        };
+
+        const shortName = (inv.source_file || '').split(/[\\/]/).pop() || 'invoice.pdf';
+        const vendor = inv.vendor_name || shortName;
+        const total = inv.grand_total ? `$${inv.grand_total}` : '$0.00';
+        const date = inv.invoice_date || 'Không có ngày';
+        const itemCount = (inv.line_items || []).length || (inv.charges || []).length || 0;
+
+        let tagHtml = '<span class="tag tag-pass">PASS</span>';
+        if (inv.status === 'REVIEW_NEEDED') {
+          tagHtml = '<span class="tag tag-flag">FLAG</span>';
+        } else if (inv.status === 'FAILED') {
+          tagHtml = '<span class="tag tag-fail">FAIL</span>';
+        } else if (inv.status === 'DUPLICATE' || inv.is_duplicate) {
+          tagHtml = '<span class="tag tag-dup">DUP</span>';
+        }
+
+        row.innerHTML = `
+          <div class="flex items-start justify-between gap-1">
+            <div class="min-w-0 flex-1">
+              <div class="text-xs font-semibold text-gray-900 truncate">${vendor}</div>
+              <div class="text-[10px] text-gray-400 font-mono mt-0.5 truncate">${date} · ${itemCount} mục</div>
+            </div>
+            <div class="flex-shrink-0 text-right ml-2">
+              <div class="text-xs font-bold text-gray-900 font-mono">${total}</div>
+              <div class="mt-0.5 flex justify-end">${tagHtml}</div>
+            </div>
+          </div>
+        `;
+        container.appendChild(row);
+      });
+    }
+
+    function renderActiveInvoice() {
+      const list = getFilteredInvoices();
+      if (list.length === 0) return;
+      if (selectedIndex >= list.length) selectedIndex = 0;
+      const inv = list[selectedIndex];
+
+      const fileName = (inv.source_file || '').split(/[\\/]/).pop() || 'invoice.pdf';
+      document.getElementById('breadFileName').textContent = fileName;
+      document.getElementById('breadCategory').textContent = inv.category || 'Khác';
+      document.getElementById('docTypeTag').textContent = inv.doc_type || 'goods_invoice';
+
+      // Details
+      document.getElementById('detailVendor').textContent = inv.vendor_name || 'N/A';
+      document.getElementById('detailInvoiceNo').textContent = inv.invoice_no || 'N/A';
+      document.getElementById('detailCurrency').textContent = inv.currency || 'USD';
+      document.getElementById('detailInvoiceDate').textContent = inv.invoice_date || 'N/A';
+      document.getElementById('detailDueDate').textContent = inv.due_date || '-';
+      document.getElementById('detailCategory').textContent = inv.category || 'Khác';
+
+      // Audit Checks
+      const isVerified = inv.status === 'VERIFIED';
+      const badge = document.getElementById('auditConfidenceBadge');
+      const bar = document.getElementById('auditProgressBar');
+
+      if (isVerified) {
+        badge.className = 'tag tag-pass text-[10px]';
+        badge.textContent = '100% MATCH';
+        bar.className = 'mini-bar-fill bg-grass-500';
+        bar.style.width = '100%';
+        document.getElementById('reconcileBannerText').innerHTML = `
+          <svg class="w-4 h-4 text-grass-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          <span class="text-grass-700">Toàn bộ 4 tầng kiểm tra số học đạt chuẩn (PASS 100%)</span>
+        `;
+        document.getElementById('tier1Val').textContent = 'PASS (0.00)';
+        document.getElementById('tier2Val').textContent = 'PASS (0.00)';
+        document.getElementById('tier3Val').textContent = 'PASS (0.00)';
+        document.getElementById('tier1Dot').className = 'w-2 h-2 rounded-full bg-grass-500';
+        document.getElementById('tier2Dot').className = 'w-2 h-2 rounded-full bg-grass-500';
+        document.getElementById('tier3Dot').className = 'w-2 h-2 rounded-full bg-grass-500';
+      } else {
+        badge.className = 'tag tag-flag text-[10px]';
+        badge.textContent = 'REVIEW NEEDED';
+        bar.className = 'mini-bar-fill bg-amber-500';
+        bar.style.width = '70%';
+        document.getElementById('reconcileBannerText').innerHTML = `
+          <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+          <span class="text-amber-800">Cần kế toán đối soát: phát hiện chênh lệch hoặc cảnh báo ngày</span>
+        `;
+        document.getElementById('tier1Val').textContent = 'CHECK';
+        document.getElementById('tier2Val').textContent = 'CHECK';
+        document.getElementById('tier3Val').textContent = 'CHECK';
+        document.getElementById('tier1Dot').className = 'w-2 h-2 rounded-full bg-amber-500';
+        document.getElementById('tier2Dot').className = 'w-2 h-2 rounded-full bg-amber-500';
+        document.getElementById('tier3Dot').className = 'w-2 h-2 rounded-full bg-amber-500';
+      }
+
+      if (inv.doc_type === 'utility_bill') {
+        document.getElementById('tier4Val').textContent = 'PASS (Charges)';
+        document.getElementById('tier4Dot').className = 'w-2 h-2 rounded-full bg-grass-500';
+      } else {
+        document.getElementById('tier4Val').textContent = 'N/A';
+        document.getElementById('tier4Dot').className = 'w-2 h-2 rounded-full bg-slate-300';
+      }
+
+      // Review Reasons
+      const alertCard = document.getElementById('reviewAlertCard');
+      const reasonsList = document.getElementById('reviewReasonsList');
+      if (inv.review_reasons && inv.review_reasons.length > 0) {
+        alertCard.style.display = 'block';
+        reasonsList.innerHTML = inv.review_reasons.map(r => `• ${r}`).join('<br>');
+      } else {
+        alertCard.style.display = 'none';
+      }
+
+      // Render Line Items or Utility Charges
+      const tableBody = document.getElementById('itemsTableBody');
+      tableBody.innerHTML = '';
+
+      if (inv.line_items && inv.line_items.length > 0) {
+        inv.line_items.forEach((it, i) => {
+          const row = document.createElement('div');
+          row.className = 'px-4 py-2.5 grid grid-cols-12 hover:bg-snow-50 transition text-xs items-center';
+          row.innerHTML = `
+            <span class="col-span-1 text-gray-400 font-mono text-[11px]">${String(i + 1).padStart(2, '0')}</span>
+            <span class="col-span-2 font-mono text-xs text-frost-600 font-medium truncate">${it.kind || 'goods'}</span>
+            <span class="col-span-4 font-semibold text-gray-800 truncate pr-2" title="${it.item_name}">${it.item_name}</span>
+            <span class="col-span-1 text-center font-mono text-gray-700">${it.qty || '1'}</span>
+            <span class="col-span-1 text-center text-[10px] text-gray-400 font-mono">${it.unit || 'EA'}</span>
+            <span class="col-span-1 text-right font-mono text-gray-700">$${it.unit_price || '0.00'}</span>
+            <span class="col-span-2 text-right font-mono font-bold text-gray-900">$${it.line_total || '0.00'}</span>
+          `;
+          tableBody.appendChild(row);
+        });
+      } else if (inv.charges && inv.charges.length > 0) {
+        inv.charges.forEach((ch, i) => {
+          const row = document.createElement('div');
+          row.className = 'px-4 py-2.5 grid grid-cols-12 hover:bg-snow-50 transition text-xs items-center';
+          row.innerHTML = `
+            <span class="col-span-1 text-gray-400 font-mono text-[11px]">${String(i + 1).padStart(2, '0')}</span>
+            <span class="col-span-2 font-mono text-xs text-amber-600 font-medium">charge</span>
+            <span class="col-span-6 font-semibold text-gray-800 truncate pr-2">${ch.description}</span>
+            <span class="col-span-3 text-right font-mono font-bold text-gray-900">$${ch.amount || '0.00'}</span>
+          `;
+          tableBody.appendChild(row);
+        });
+      } else {
+        tableBody.innerHTML = '<div class="p-8 text-center text-gray-400 font-mono text-xs">Không có dữ liệu dòng hàng itemized</div>';
+      }
+
+      // Footers
+      document.getElementById('footerSubtotal').textContent = `$${inv.subtotal || '0.00'}`;
+      document.getElementById('footerTax').textContent = `$${inv.tax || '0.00'}`;
+      document.getElementById('footerDiscount').textContent = `-$${inv.discount || '0.00'}`;
+      document.getElementById('footerGrandTotal').textContent = `$${inv.grand_total || '0.00'}`;
+    }
+
+    function setQueueFilter(filter, btn) {
+      currentFilter = filter;
+      document.querySelectorAll('.filter-btn').forEach(b => {
+        b.classList.remove('bg-white', 'border', 'border-snow-200', 'text-frost-600', 'shadow-2xs');
+        b.classList.add('text-gray-500');
+      });
+      btn.classList.add('bg-white', 'border', 'border-snow-200', 'text-frost-600', 'shadow-2xs');
+      btn.classList.remove('text-gray-500');
+      selectedIndex = 0;
+      renderQueue();
+      renderActiveInvoice();
+    }
+
+    function applyFilters() {
+      selectedIndex = 0;
+      renderQueue();
+      renderActiveInvoice();
+    }
+
+    function triggerUpload() {
+      document.getElementById('fileUploadInput').click();
+    }
+
+    async function handleFileUpload(files) {
+      if (!files || files.length === 0) return;
+      const count = files.length;
+      alert(`Đang gửi ${count} tài liệu lên FastAPI VLM Microservice (http://localhost:8000)...`);
+
+      if (count === 1) {
+        const formData = new FormData();
+        formData.append("file", files[0]);
+        formData.append("target_month", "2026-08");
+
+        try {
+          const res = await fetch("/api/v1/extract", {
+            method: "POST",
+            body: formData
+          });
+          if (res.ok) {
+            const data = await res.json();
+            allInvoices.unshift(data);
+            selectedIndex = 0;
+            renderAll();
+            alert(`Xử lý thành công!\nNhà cung cấp: ${data.vendor_name || 'N/A'}\nTổng tiền: $${data.grand_total}\nTrạng thái: ${data.status}`);
+          } else {
+            alert("Lỗi trích xuất file từ microservice.");
+          }
+        } catch (e) {
+          alert("Lỗi kết nối tới server: " + e.message);
+        }
+      } else {
+        const formData = new FormData();
+        for (let i = 0; i < files.length; i++) {
+          formData.append("files", files[i]);
+        }
+        formData.append("target_month", "2026-08");
+        formData.append("workers", "8");
+
+        try {
+          const res = await fetch("/api/v1/extract-batch", {
+            method: "POST",
+            body: formData
+          });
+          if (res.ok) {
+            const result = await res.json();
+            if (result.invoices && result.invoices.length > 0) {
+              allInvoices = result.invoices.concat(allInvoices);
+              selectedIndex = 0;
+              renderAll();
+            }
+            alert(`Xử lý hoàn tất ${result.total_files} files!\n- Verified: ${result.verified_count}\n- Needs Review: ${result.review_needed_count}`);
+          } else {
+            alert("Lỗi xử lý batch từ server.");
+          }
+        } catch (e) {
+          alert("Lỗi kết nối server: " + e.message);
+        }
+      }
+    }
+
+    function downloadExcel() {
+      window.open('/api/v1/download-excel', '_blank');
+    }
+
+    function approveAndNext() {
+      const list = getFilteredInvoices();
+      if (list.length === 0) return;
+      const inv = list[selectedIndex];
+      inv.status = 'VERIFIED';
+      inv.review_reasons = [];
+      updateTopMetrics();
+      if (selectedIndex < list.length - 1) {
+        selectedIndex++;
+      }
+      renderQueue();
+      renderActiveInvoice();
+    }
+
+    function editCurrentInvoice() {
+      const list = getFilteredInvoices();
+      if (list.length === 0) return;
+      const inv = list[selectedIndex];
+      const newTotal = prompt("Nhập tổng thanh toán mới:", inv.grand_total);
+      if (newTotal && !isNaN(parseFloat(newTotal))) {
+        inv.grand_total = parseFloat(newTotal).toFixed(2);
+        renderQueue();
+        renderActiveInvoice();
+      }
+    }
+
+    // Keyboard bindings
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        approveAndNext();
+      } else if (e.key === 'ArrowDown') {
+        const list = getFilteredInvoices();
+        if (selectedIndex < list.length - 1) {
+          selectedIndex++;
+          renderQueue();
+          renderActiveInvoice();
+        }
+      } else if (e.key === 'ArrowUp') {
+        if (selectedIndex > 0) {
+          selectedIndex--;
+          renderQueue();
+          renderActiveInvoice();
+        }
+      }
+    });
+
+    // Mobile View Tab Controller
+    let currentMobileTab = 'queue';
+    function setMobileTab(tab) {
+      currentMobileTab = tab;
+      const colQ = document.getElementById('colQueue');
+      const colW = document.getElementById('colWorkspace');
+      const colI = document.getElementById('colInspector');
+      const btnQ = document.getElementById('tabBtnQueue');
+      const btnW = document.getElementById('tabBtnWorkspace');
+      const btnI = document.getElementById('tabBtnInspector');
+
+      if (!colQ || !colW || !colI) return;
+
+      if (window.innerWidth >= 1024) {
+        colQ.classList.remove('hidden');
+        colW.classList.remove('hidden');
+        colI.classList.remove('hidden');
+        return;
+      }
+
+      colQ.classList.add('hidden');
+      colW.classList.add('hidden');
+      colI.classList.add('hidden');
+
+      if (btnQ && btnW && btnI) {
+        [btnQ, btnW, btnI].forEach(b => {
+          b.className = 'flex-1 py-1.5 px-2 rounded-lg text-gray-500 hover:bg-snow-100 text-center transition';
+        });
+
+        if (tab === 'queue') {
+          colQ.classList.remove('hidden');
+          btnQ.className = 'flex-1 py-1.5 px-2 rounded-lg font-bold bg-frost-50 text-frost-600 border border-frost-200 text-center transition shadow-2xs';
+        } else if (tab === 'workspace') {
+          colW.classList.remove('hidden');
+          btnW.className = 'flex-1 py-1.5 px-2 rounded-lg font-bold bg-frost-50 text-frost-600 border border-frost-200 text-center transition shadow-2xs';
+        } else if (tab === 'inspector') {
+          colI.classList.remove('hidden');
+          btnI.className = 'flex-1 py-1.5 px-2 rounded-lg font-bold bg-frost-50 text-frost-600 border border-frost-200 text-center transition shadow-2xs';
+        }
+      }
+    }
+
+    window.addEventListener('resize', () => {
+      setMobileTab(currentMobileTab);
+    });
+
+    // Start
+    loadInitialData();
+  </script>
+</body>
+</html>

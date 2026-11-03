@@ -3,7 +3,7 @@
 
 # Input and output data
 input_pdfs/
-output/
+output*/
 logs/
 cache/
 samples/

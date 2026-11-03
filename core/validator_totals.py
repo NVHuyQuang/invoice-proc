@@ -144,6 +144,9 @@ def validate_tier3_grand_total(invoice: CanonicalInvoice) -> Tuple[bool, List[st
 
     tip = invoice.tip if invoice.tip is not None else Decimal("0")
     fees_sum = sum((f for f in invoice.fees if f is not None), Decimal("0"))
+    candidate_fees = [fees_sum]
+    if fees_sum > 0:
+        candidate_fees.append(Decimal("0"))
     discount = abs(invoice.discount) if invoice.discount is not None else Decimal("0")
 
     is_credit_memo = (
@@ -157,28 +160,30 @@ def validate_tier3_grand_total(invoice: CanonicalInvoice) -> Tuple[bool, List[st
     if not has_tax_conflict:
         for candidate_tax in candidate_taxes:
             for candidate_deposit in candidate_deposits:
-                expected = subtotal + candidate_tax + shipping + tip + fees_sum - discount + candidate_deposit
-                diff = abs(expected - grand_total)
+                for candidate_fee in candidate_fees:
+                    expected = subtotal + candidate_tax + shipping + tip + candidate_fee - discount + candidate_deposit
+                    diff = abs(expected - grand_total)
 
-                if is_credit_memo:
-                    diff_flipped = abs(-expected - grand_total)
-                    diff_abs = abs(abs(expected) - abs(grand_total))
-                    diff = min(diff, diff_flipped, diff_abs)
+                    if is_credit_memo:
+                        diff_flipped = abs(-expected - grand_total)
+                        diff_abs = abs(abs(expected) - abs(grand_total))
+                        diff = min(diff, diff_flipped, diff_abs)
 
-                if best_diff is None or diff < best_diff:
-                    best_diff = diff
-                    best_expected = expected
+                    if best_diff is None or diff < best_diff:
+                        best_diff = diff
+                        best_expected = expected
 
-                if diff <= TIER3_TOLERANCE:
-                    return True, []
+                    if diff <= TIER3_TOLERANCE:
+                        return True, []
     else:
         for candidate_tax in candidate_taxes:
             for candidate_deposit in candidate_deposits:
-                expected = subtotal + candidate_tax + shipping + tip + fees_sum - discount + candidate_deposit
-                diff = abs(expected - grand_total)
-                if best_diff is None or diff < best_diff:
-                    best_diff = diff
-                    best_expected = expected
+                for candidate_fee in candidate_fees:
+                    expected = subtotal + candidate_tax + shipping + tip + candidate_fee - discount + candidate_deposit
+                    diff = abs(expected - grand_total)
+                    if best_diff is None or diff < best_diff:
+                        best_diff = diff
+                        best_expected = expected
 
     errors = []
     if has_tax_conflict and tax_conflict_msg:

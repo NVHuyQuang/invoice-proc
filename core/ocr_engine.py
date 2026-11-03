@@ -112,7 +112,7 @@ class OCREngine:
         self.use_shared_engine = use_shared_engine
         self.mock = mock
         self.errors: List[Dict[str, Any]] = []
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
 
         if self.mock and self._engine is None:
             self._engine = MockPaddleOCR()
@@ -154,14 +154,11 @@ class OCREngine:
             try:
                 from paddleocr import PaddleOCR
 
-                # PLAN 2.1 PaddleOCR v3 configuration
+                # PLAN 2.1 PaddleOCR configuration
                 try:
                     backend = PaddleOCR(
                         lang=self.lang,
                         enable_mkldnn=False,
-                        use_doc_orientation_classify=True,
-                        use_doc_unwarping=False,
-                        use_textline_orientation=True,
                     )
                 except TypeError:
                     # PLAN 2.1 fallback for v2.x
